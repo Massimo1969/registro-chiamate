@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#16233f">
+<title>Registro Chiamate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+/* Layout: app a schermo intero per telefono. Barra in alto, contenuto che scorre, 5 schede in basso. */
+:root{
+  --bg:#eef1f6; --card:#ffffff; --ink:#16233f; --ink2:#5b6780; --line:#d5dbe6;
+  --accent:#2447d6; --accent-ink:#ffffff;
+  --good:#12805c; --warn:#b26a00; --crit:#c0342c; --info:#2447d6; --mute:#6b7488;
+  --good-bg:#dff3ea; --warn-bg:#fbeccd; --crit-bg:#fbe1de; --info-bg:#e0e7fd; --mute-bg:#e6e9f0;
+  --display:"Archivo",system-ui,"Segoe UI",Roboto,sans-serif;
+  --body:system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0e1524; --card:#18223a; --ink:#e9edf7; --ink2:#9aa6c0; --line:#2b3857;
+    --accent:#7d98ff; --accent-ink:#0e1524;
+    --good:#4fd1a1; --warn:#f0b455; --crit:#ff8a80; --info:#9db1ff; --mute:#9aa6c0;
+    --good-bg:#12382d; --warn-bg:#40300f; --crit-bg:#45201d; --info-bg:#1f2c57; --mute-bg:#243049;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0e1524; --card:#18223a; --ink:#e9edf7; --ink2:#9aa6c0; --line:#2b3857;
+  --accent:#7d98ff; --accent-ink:#0e1524;
+  --good:#4fd1a1; --warn:#f0b455; --crit:#ff8a80; --info:#9db1ff; --mute:#9aa6c0;
+  --good-bg:#12382d; --warn-bg:#40300f; --crit-bg:#45201d; --info-bg:#1f2c57; --mute-bg:#243049;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);display:flex;flex-direction:column;-webkit-tap-highlight-color:transparent}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+header{padding:12px 16px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);background:var(--card)}
+header h1{font-size:19px;font-weight:800}
+header span{color:var(--ink2);font-size:13px;font-variant-numeric:tabular-nums}
+main{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px;max-width:640px;width:100%;margin:0 auto}
+nav{display:flex;border-top:1px solid var(--line);background:var(--card)}
+nav button{flex:1;border:0;background:none;padding:11px 2px 12px;font-size:12.5px;font-weight:600;color:var(--ink2);border-top:3px solid transparent;position:relative}
+nav button[aria-current="true"]{color:var(--accent);border-top-color:var(--accent)}
+nav .dot{position:absolute;top:5px;right:calc(50% - 26px);background:var(--crit);color:#fff;border-radius:9px;font-size:10.5px;min-width:18px;padding:1px 4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.muted{color:var(--ink2);font-size:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.grow{flex:1;min-width:0}
+.pill{display:inline-block;font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap}
+.t-good{background:var(--good-bg);color:var(--good)} .t-warn{background:var(--warn-bg);color:var(--warn)}
+.t-crit{background:var(--crit-bg);color:var(--crit)} .t-info{background:var(--info-bg);color:var(--info)}
+.t-mute{background:var(--mute-bg);color:var(--mute)}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:11px 14px;font-weight:600;text-decoration:none;color:var(--ink);text-align:center}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--crit);border-color:var(--crit)}
+.btn.small{padding:7px 11px;font-size:14px}
+.callbtn{display:block;background:var(--good);color:#fff;border-radius:14px;padding:18px;text-align:center;font:800 21px var(--display);text-decoration:none;letter-spacing:.2px}
+:root[data-theme="dark"] .callbtn{color:#06231a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .callbtn{color:#06231a}}
+.who{font:800 25px/1.15 var(--display);overflow-wrap:anywhere}
+.phone{font:700 19px var(--display);font-variant-numeric:tabular-nums;letter-spacing:.4px}
+input[type=text],input[type=search],input[type=number],input[type=datetime-local],select,textarea{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 12px}
+textarea{min-height:70px;resize:vertical}
+label{font-size:13px;font-weight:600;color:var(--ink2);display:flex;flex-direction:column;gap:4px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:6px 12px;font-size:13.5px;font-weight:600;white-space:nowrap;color:var(--ink2)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--card);border-color:var(--ink)}
+.list{display:flex;flex-direction:column;gap:8px}
+.item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 13px;display:flex;gap:10px;align-items:center;text-align:left;width:100%}
+.item b{display:block;overflow-wrap:anywhere}
+.item small{color:var(--ink2);font-variant-numeric:tabular-nums}
+.item.late{border-left:5px solid var(--crit)}
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.tile b{font:800 26px var(--display);font-variant-numeric:tabular-nums;display:block}
+.tile span{font-size:13px;color:var(--ink2)}
+.bar{display:grid;grid-template-columns:150px 1fr 44px;gap:8px;align-items:center;font-size:14px}
+.bar i{display:block;height:12px;border-radius:6px;background:var(--accent);min-width:2px}
+.bar em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.outgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.out{border:2px solid var(--line);background:var(--card);border-radius:10px;padding:12px 8px;font-weight:700;font-size:14.5px}
+.out[aria-pressed="true"]{border-color:var(--accent);background:var(--info-bg)}
+.overlay{position:fixed;inset:0;background:rgba(8,12,24,.55);display:flex;align-items:flex-end;justify-content:center;z-index:10}
+.sheet{background:var(--card);width:100%;max-width:640px;max-height:92%;overflow-y:auto;border-radius:18px 18px 0 0;padding:18px 16px 22px;display:flex;flex-direction:column;gap:12px}
+.sheet h2{font-size:19px}
+.hist{border-top:1px solid var(--line);padding-top:8px;font-size:14px;display:flex;flex-direction:column;gap:2px}
+.toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--ink);color:var(--card);padding:10px 16px;border-radius:10px;font-weight:600;font-size:14px;z-index:20;max-width:90%}
+.banner{background:var(--warn-bg);color:var(--warn);border-radius:12px;padding:11px 13px;font-size:14px;font-weight:600}
+.dur{display:flex;gap:8px;align-items:center}
+.dur input{width:76px;text-align:center;font:700 19px var(--display)}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .18s ease-out}@keyframes up{from{transform:translateY(24px)}to{transform:none}}}
+</style>
+</head>
+<body>
+<header><h1>Registro Chiamate</h1><span id="hdr"></span></header>
+<main id="main"></main>
+<nav id="nav"></nav>
+<div id="sheetHost"></div>
+<input type="file" id="fileCsv" accept=".csv,.txt,text/csv" hidden>
+<input type="file" id="fileJson" accept=".json,application/json" hidden>
+
+<script>
+/* ====================== CONFIGURAZIONE — modifica qui ======================
+   Esiti della chiamata. Per aggiungerne uno, copia una riga e cambia id e label.
+   tone:  good | warn | crit | info | mute   (colore dell'etichetta)
+   retry: true  = il contatto torna in coda per un altro tentativo
+   date:  'req' = data obbligatoria, 'opt' = data facoltativa
+   reached: true = conta come "contatto raggiunto" nelle statistiche
+   block: true  = il contatto non può più essere chiamato                    */
+const OUTCOMES = [
+  {id:'no_answer',      label:'Non risponde',         tone:'mute', retry:true},
+  {id:'busy',           label:'Occupato',             tone:'mute', retry:true},
+  {id:'callback',       label:'Richiamare',           tone:'warn', date:'req', reached:true},
+  {id:'interested',     label:'Interessato',          tone:'info', date:'opt', reached:true},
+  {id:'appointment',    label:'Appuntamento fissato', tone:'good', date:'req', reached:true},
+  {id:'customer',       label:'Cliente',              tone:'good', reached:true},
+  {id:'not_interested', label:'Non interessato',      tone:'crit', reached:true},
+  {id:'wrong',          label:'Numero errato',        tone:'crit'},
+  {id:'dnc',            label:'Non chiamare più',     tone:'crit', reached:true, block:true},
+];
+const DEFAULTS = { prefix:'+39', maxAttempts:4 };   // prefisso per numeri senza +, tentativi massimi a vuoto
+/* ========================================================================== */
+
+/*PURE-START*/
+function normPhone(raw, prefix){
+  let s = String(raw||'').trim().replace(/[^\d+]/g,'');
+  if(!s) return '';
+  if(s.startsWith('00')) s = '+' + s.slice(2);
+  s = s[0]==='+' ? '+' + s.slice(1).replace(/\+/g,'') : s.replace(/\+/g,'');
+  if(s[0] !== '+') s = prefix + s;
+  return s.length >= 8 ? s : '';
+}
+function parseCSV(text){
+  text = text.replace(/^﻿/,'');
+  const first = text.split(/\r?\n/)[0] || '';
+  const delim = [';','\t',','].map(d=>[d, first.split(d).length]).sort((a,b)=>b[1]-a[1])[0][0];
+  const rows=[]; let row=[], cur='', q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+    else if(c==='"') q=true;
+    else if(c===delim){ row.push(cur); cur=''; }
+    else if(c==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; }
+    else if(c!=='\r') cur+=c;
+  }
+  if(cur!=='' || row.length){ row.push(cur); rows.push(row); }
+  return rows.filter(r=>r.some(v=>v.trim()!==''));
+}
+function fmtDur(sec){ sec=Math.max(0,Math.round(sec||0)); const m=Math.floor(sec/60), s=sec%60; return m+':'+String(s).padStart(2,'0'); }
+/*PURE-END*/
+
+const OUT = Object.fromEntries(OUTCOMES.map(o=>[o.id,o]));
+const $ = s => document.querySelector(s);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'c'+Date.now().toString(36)+Math.random().toString(36).slice(2));
+const fmtDate = t => t ? new Date(t).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+const toLocalInput = t => { const d=new Date(t - new Date(t).getTimezoneOffset()*60000); return d.toISOString().slice(0,16); };
+const lsGet = k => { try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return null; } };
+const lsSet = (k,v) => { try{ v==null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); }catch(e){} };
+
+/* ---------- archivio: IndexedDB sul telefono ---------- */
+let db=null, contacts=[], settings={...DEFAULTS}, meta={};
+function openDB(){
+  return new Promise(res=>{
+    try{
+      const r = indexedDB.open('registro-chiamate',1);
+      r.onupgradeneeded = ()=>{ r.result.createObjectStore('contacts',{keyPath:'id'}); r.result.createObjectStore('meta'); };
+      r.onsuccess = ()=>res(r.result);
+      r.onerror = ()=>res(null);
+    }catch(e){ res(null); }
+  });
+}
+function idb(store, mode, fn){
+  return new Promise(res=>{
+    if(!db) return res(null);
+    try{ const tx=db.transaction(store,mode); const out=fn(tx.objectStore(store)); tx.oncomplete=()=>res(out&&out.result); tx.onerror=()=>res(null); }
+    catch(e){ res(null); }
+  });
+}
+const saveContact = c => idb('contacts','readwrite', s=>s.put(c));
+const saveMany = list => idb('contacts','readwrite', s=>{ list.forEach(c=>s.put(c)); });
+const saveMeta = () => idb('meta','readwrite', s=>{ s.put(settings,'settings'); s.put(meta,'meta'); });
+
+/* ---------- stato interfaccia ---------- */
+let tab='call', listFilter='', statusFilter='', query='', shown=60, period='today', skipped=new Set(), toastT=null;
+let pending = lsGet('pendingCall');   // chiamata avviata e non ancora registrata
+
+const byId = id => contacts.find(c=>c.id===id);
+const lists = () => [...new Set(contacts.map(c=>c.list).filter(Boolean))];
+const statusOf = c => OUT[c.status] || {id:'new',label:'Da chiamare',tone:'info'};
+const pill = c => { const s=statusOf(c); return `<span class="pill t-${s.tone}">${esc(s.label)}</span>`; };
+const isDue = c => (c.status==='callback'||c.status==='interested') && c.callbackAt && c.callbackAt<=Date.now();
+
+function queue(){
+  const pool = contacts.filter(c=>(!listFilter||c.list===listFilter) && !skipped.has(c.id));
+  const due = pool.filter(isDue).sort((a,b)=>a.callbackAt-b.callbackAt);
+  const fresh = pool.filter(c=>c.status==='new');
+  const retry = pool.filter(c=>OUT[c.status] && OUT[c.status].retry && c.attempts<settings.maxAttempts).sort((a,b)=>(a.lastCallAt||0)-(b.lastCallAt||0));
+  return [...due,...fresh,...retry];
+}
+function agenda(){
+  return contacts.filter(c=>c.callbackAt && ['callback','interested','appointment'].includes(c.status)).sort((a,b)=>a.callbackAt-b.callbackAt);
+}
+
+/* ---------- disegno ---------- */
+function render(){
+  const dueN = agenda().filter(c=>c.callbackAt<=Date.now()).length;
+  $('#hdr').textContent = contacts.length ? contacts.length.toLocaleString('it-IT')+' contatti' : '';
+  $('#nav').innerHTML = [['call','Chiama'],['contacts','Contatti'],['agenda','Richiami'],['stats','Numeri'],['data','Dati']]
+    .map(([id,l])=>`<button data-act="tab" data-id="${id}" aria-current="${tab===id}">${l}${id==='agenda'&&dueN?`<span class="dot">${dueN}</span>`:''}</button>`).join('');
+  const m = $('#main');
+  if(!contacts.length && tab!=='data'){ m.innerHTML = emptyView(); return; }
+  m.innerHTML = ({call:callView,contacts:contactsView,agenda:agendaView,stats:statsView,data:dataView})[tab]();
+}
+function emptyView(){
+  return `<div class="card"><h2>Carica la tua lista</h2>
+  <p class="muted">Esporta i contatti dal CRM in formato CSV e importali qui. I dati restano solo su questo telefono.</p>
+  <button class="btn primary" data-act="importCsv">Importa file CSV</button>
+  <button class="btn" data-act="demo">Prova con 6 contatti di esempio</button></div>`;
+}
+function listChips(){
+  const ls = lists(); if(ls.length<2) return '';
+  return `<div class="chips"><button class="chip" data-act="list" data-id="" aria-pressed="${!listFilter}">Tutte le liste</button>`+
+    ls.map(l=>`<button class="chip" data-act="list" data-id="${esc(l)}" aria-pressed="${listFilter===l}">${esc(l)}</button>`).join('')+`</div>`;
+}
+function callView(){
+  const q = queue();
+  const today = new Date().setHours(0,0,0,0);
+  const doneToday = contacts.reduce((n,c)=>n+c.calls.filter(k=>k.at>=today).length,0);
+  let h = listChips() + `<div class="muted">In coda: <b>${q.length}</b> · Chiamate oggi: <b>${doneToday}</b></div>`;
+  if(pending && byId(pending.id)){
+    const c = byId(pending.id);
+    return h + `<div class="card"><span class="pill t-warn" style="align-self:flex-start">Chiamata da registrare</span>
+      <div class="who">${esc(c.name||c.company||c.phone)}</div><div class="phone">${esc(c.phone)}</div>
+      <button class="btn primary" data-act="outcome" data-id="${c.id}">Registra esito</button>
+      <button class="btn" data-act="cancelPending">Annulla, non ho chiamato</button></div>`;
+  }
+  if(!q.length) return h + `<div class="card"><h2>Coda vuota</h2><p class="muted">Nessun contatto da chiamare in questa lista. Importa altri contatti o guarda i richiami in programma.</p>
+    ${skipped.size?`<button class="btn" data-act="unskip">Rimetti in coda i ${skipped.size} saltati</button>`:''}</div>`;
+  const c = q[0];
+  const last = c.calls[c.calls.length-1];
+  h += `<div class="card">
+    <div class="row">${pill(c)}${isDue(c)?`<span class="pill t-crit">Richiamo delle ${esc(fmtDate(c.callbackAt))}</span>`:''}${c.attempts?`<span class="muted">Tentativi: ${c.attempts}</span>`:''}</div>
+    <div class="who">${esc(c.name||c.company||'Senza nome')}</div>
+    ${c.name&&c.company?`<div>${esc(c.company)}</div>`:''}
+    <div class="muted">${esc([c.city,c.email,c.list].filter(Boolean).join(' · '))}</div>
+    ${c.info?`<div class="muted">${esc(c.info)}</div>`:''}
+    ${c.note?`<div><b>Nota:</b> ${esc(c.note)}</div>`:''}
+    ${last?`<div class="muted">Ultima: ${esc(fmtDate(last.at))} · ${esc(OUT[last.outcome]?OUT[last.outcome].label:last.outcome)}</div>`:''}
+    <div class="phone">${esc(c.phone)}</div>
+    <a class="callbtn" href="tel:${esc(c.phone)}" data-act="call" data-id="${c.id}">Chiama</a>
+    <div class="row"><button class="btn grow" data-act="skip" data-id="${c.id}">Salta</button>
+    <button class="btn grow" data-act="outcome" data-id="${c.id}">Esito senza chiamare</button>
+    <button class="btn grow" data-act="open" data-id="${c.id}">Scheda</button></div></div>`;
+  if(q[1]) h += `<div class="muted">Prossimo: ${esc(q[1].name||q[1].company||q[1].phone)}</div>`;
+  return h;
+}
+function contactsView(){
+  const qq = query.trim().toLowerCase();
+  const res = contacts.filter(c=>(!listFilter||c.list===listFilter) && (!statusFilter||c.status===statusFilter) &&
+    (!qq || (c.name+' '+c.company+' '+c.phone+' '+c.city).toLowerCase().includes(qq)));
+  const chips = [{id:'',label:'Tutti'},{id:'new',label:'Da chiamare'},...OUTCOMES];
+  return `<input type="search" id="q" placeholder="Cerca nome, azienda, telefono, città" value="${esc(query)}">
+    <div class="chips">${chips.map(s=>`<button class="chip" data-act="status" data-id="${s.id}" aria-pressed="${statusFilter===s.id}">${esc(s.label)}</button>`).join('')}</div>
+    ${listChips()}<div class="muted">${res.length.toLocaleString('it-IT')} risultati</div>
+    <div class="list">${res.slice(0,shown).map(itemRow).join('')}</div>
+    ${res.length>shown?`<button class="btn" data-act="more">Mostra altri</button>`:''}`;
+}
+function itemRow(c){
+  return `<button class="item" data-act="open" data-id="${c.id}"><span class="grow"><b>${esc(c.name||c.company||'Senza nome')}</b>
+    <small>${esc([c.name?c.company:'',c.phone].filter(Boolean).join(' · '))}</small></span>${pill(c)}</button>`;
+}
+function agendaView(){
+  const a = agenda(), now=Date.now();
+  if(!a.length) return `<div class="card"><h2>Nessun richiamo in programma</h2><p class="muted">Qui compaiono i contatti da richiamare e gli appuntamenti fissati, in ordine di data.</p></div>`;
+  return `<div class="list">${a.map(c=>`<button class="item ${c.callbackAt<=now?'late':''}" data-act="open" data-id="${c.id}">
+    <span class="grow"><b>${esc(c.name||c.company||c.phone)}</b><small>${esc(fmtDate(c.callbackAt))}${c.callbackAt<=now?' · scaduto':''}${c.note?' · '+esc(c.note):''}</small></span>${pill(c)}</button>`).join('')}</div>`;
+}
+function statsView(){
+  const from = period==='today' ? new Date().setHours(0,0,0,0) : period==='week' ? Date.now()-7*864e5 : 0;
+  const calls=[]; contacts.forEach(c=>c.calls.forEach(k=>{ if(k.at>=from) calls.push(k); }));
+  const n = id => calls.filter(k=>k.outcome===id).length;
+  const reached = calls.filter(k=>OUT[k.outcome]&&OUT[k.outcome].reached).length;
+  const talk = calls.reduce((s,k)=>s+(k.dur||0),0);
+  const pct = (a,b)=> b ? Math.round(a/b*100)+'%' : '0%';
+  const max = Math.max(1,...OUTCOMES.map(o=>n(o.id)));
+  return `<div class="chips">${[['today','Oggi'],['week','Ultimi 7 giorni'],['all','Sempre']].map(([id,l])=>`<button class="chip" data-act="period" data-id="${id}" aria-pressed="${period===id}">${l}</button>`).join('')}</div>
+  <div class="tiles">
+    <div class="tile"><b>${calls.length}</b><span>Chiamate fatte</span></div>
+    <div class="tile"><b>${fmtDur(talk)}</b><span>Tempo al telefono (min:sec)</span></div>
+    <div class="tile"><b>${reached}</b><span>Contatti raggiunti (${pct(reached,calls.length)})</span></div>
+    <div class="tile"><b>${n('appointment')}</b><span>Appuntamenti (${pct(n('appointment'),reached)} dei raggiunti)</span></div>
+    <div class="tile"><b>${n('interested')}</b><span>Interessati</span></div>
+    <div class="tile"><b>${n('customer')}</b><span>Clienti</span></div>
+  </div>
+  <div class="card"><h3>Esiti</h3>${OUTCOMES.map(o=>`<div class="bar"><span>${esc(o.label)}</span><i style="width:${n(o.id)/max*100}%"></i><em>${n(o.id)}</em></div>`).join('')}</div>
+  <div class="card"><h3>Stato della lista</h3>${[{id:'new',label:'Da chiamare'},...OUTCOMES].map(o=>{const k=contacts.filter(c=>c.status===o.id).length;return `<div class="bar"><span>${esc(o.label)}</span><i style="width:${k/Math.max(1,contacts.length)*100}%"></i><em>${k}</em></div>`;}).join('')}</div>`;
+}
+function dataView(){
+  const hasCalls = contacts.some(c=>c.calls.length);
+  const old = !meta.lastBackup || Date.now()-meta.lastBackup > 7*864e5;
+  return `${!db?`<div class="banner">Questo browser non permette di salvare i dati. Apri la pagina in Chrome da un indirizzo https.</div>`:''}
+  ${hasCalls&&old?`<div class="banner">Ultimo backup: ${meta.lastBackup?esc(fmtDate(meta.lastBackup)):'mai'}. Scarica un backup: se cancelli i dati di Chrome perdi tutto.</div>`:''}
+  <div class="card"><h3>Importa</h3><p class="muted">File CSV esportato dal CRM. I numeri già presenti vengono saltati.</p>
+    <button class="btn primary" data-act="importCsv">Importa file CSV</button></div>
+  <div class="card"><h3>Esporta</h3>
+    <button class="btn" data-act="expContacts">Contatti con esito (CSV)</button>
+    <button class="btn" data-act="expCalls">Registro di tutte le chiamate (CSV)</button></div>
+  <div class="card"><h3>Backup</h3>
+    <button class="btn" data-act="backup">Scarica backup completo</button>
+    <button class="btn" data-act="restore">Ripristina da backup</button></div>
+  <div class="card"><h3>Impostazioni</h3>
+    <label>Prefisso per i numeri senza prefisso internazionale<input type="text" id="setPrefix" value="${esc(settings.prefix)}"></label>
+    <label>Tentativi massimi senza risposta prima di togliere dalla coda<input type="number" id="setMax" min="1" max="20" value="${settings.maxAttempts}"></label>
+    <button class="btn" data-act="saveSettings">Salva impostazioni</button></div>
+  <div class="card"><h3>Zona pericolosa</h3><button class="btn danger" data-act="wipe">Cancella tutti i contatti e le chiamate</button></div>`;
+}
+
+/* ---------- pannelli ---------- */
+function closeSheet(){ $('#sheetHost').innerHTML=''; }
+function sheet(html){ $('#sheetHost').innerHTML = `<div class="overlay" data-act="overlay"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`; }
+function toast(msg){ clearTimeout(toastT); const old=$('.toast'); if(old) old.remove(); const d=document.createElement('div'); d.className='toast'; d.textContent=msg; document.body.appendChild(d); toastT=setTimeout(()=>d.remove(),3200); }
+
+function contactSheet(id){
+  const c = byId(id); if(!c) return;
+  const blocked = OUT[c.status] && OUT[c.status].block;
+  const wa = c.phone.replace(/\D/g,'');
+  sheet(`<div class="row">${pill(c)}${c.callbackAt?`<span class="muted">${esc(fmtDate(c.callbackAt))}</span>`:''}</div>
+    <h2>${esc(c.name||c.company||'Senza nome')}</h2>
+    <div class="muted">${esc([c.company&&c.name?c.company:'',c.city,c.email,c.list].filter(Boolean).join(' · '))}</div>
+    ${c.info?`<div class="muted">${esc(c.info)}</div>`:''}
+    <div class="phone">${esc(c.phone)}</div>
+    ${blocked?`<div class="banner">Contatto da non chiamare più.</div>`:`<a class="callbtn" href="tel:${esc(c.phone)}" data-act="call" data-id="${c.id}">Chiama</a>`}
+    <div class="row"><button class="btn grow" data-act="outcome" data-id="${c.id}">Registra esito</button>
+      ${blocked?'':`<a class="btn grow" href="https://wa.me/${wa}" target="_blank" rel="noopener">WhatsApp</a>`}</div>
+    <label>Nota sul contatto<textarea id="cNote">${esc(c.note)}</textarea></label>
+    <button class="btn" data-act="saveNote" data-id="${c.id}">Salva nota</button>
+    <h3>Storico chiamate (${c.calls.length})</h3>
+    ${c.calls.length ? c.calls.slice().reverse().map(k=>`<div class="hist"><b>${esc(fmtDate(k.at))} · ${esc(OUT[k.outcome]?OUT[k.outcome].label:k.outcome)}</b>
+      <span class="muted">Durata ${fmtDur(k.dur)}${k.note?' · '+esc(k.note):''}</span></div>`).join('') : `<div class="muted">Nessuna chiamata registrata.</div>`}
+    <div class="row"><button class="btn grow" data-act="close">Chiudi</button><button class="btn danger" data-act="delContact" data-id="${c.id}">Elimina</button></div>`);
+}
+let oSel=null;
+function outcomeSheet(id, sec){
+  const c = byId(id); if(!c) return; oSel=null;
+  sec = Math.max(0,Math.round(sec||0));
+  sheet(`<h2>Com'è andata con ${esc(c.name||c.company||c.phone)}?</h2>
+    <div class="dur"><span class="muted">Durata</span><input type="number" id="oMin" min="0" value="${Math.floor(sec/60)}" aria-label="Minuti"><b>:</b><input type="number" id="oSec" min="0" max="59" value="${sec%60}" aria-label="Secondi"><span class="muted">min : sec</span></div>
+    <div class="outgrid">${OUTCOMES.map(o=>`<button class="out" data-act="pick" data-id="${o.id}" aria-pressed="false">${esc(o.label)}</button>`).join('')}</div>
+    <div id="oDateBox" hidden><label><span id="oDateLbl">Quando</span><input type="datetime-local" id="oDate"></label>
+      <div class="chips" style="margin-top:8px">${[['2h','Tra 2 ore'],['tom','Domani 10:00'],['3d','Tra 3 giorni'],['7d','Tra una settimana']].map(([k,l])=>`<button class="chip" data-act="quick" data-id="${k}">${l}</button>`).join('')}</div></div>
+    <label>Nota<textarea id="oNote" placeholder="Cosa vi siete detti"></textarea></label>
+    <div class="row"><button class="btn grow" data-act="close">Annulla</button><button class="btn primary grow" data-act="saveOutcome" data-id="${c.id}">Salva</button></div>`);
+}
+function saveOutcome(id){
+  const c = byId(id); if(!c) return;
+  if(!oSel) return toast('Scegli un esito');
+  const o = OUT[oSel];
+  const dv = $('#oDate').value, when = dv ? new Date(dv).getTime() : null;
+  if(o.date==='req' && !when) return toast('Indica data e ora');
+  const dur = (parseInt($('#oMin').value)||0)*60 + (parseInt($('#oSec').value)||0);
+  const note = $('#oNote').value.trim();
+  c.calls.push({at:Date.now(), dur, outcome:o.id, note});
+  c.status = o.id; c.lastCallAt = Date.now();
+  c.attempts = o.retry ? (c.attempts||0)+1 : 0;
+  c.callbackAt = o.date ? when : null;
+  if(note) c.note = note;
+  saveContact(c);
+  if(pending && pending.id===id){ pending=null; lsSet('pendingCall',null); }
+  closeSheet(); render(); toast('Salvato: '+o.label);
+}
+
+/* ---------- importazione CSV ---------- */
+const FIELDS = [
+  ['phone','Telefono (obbligatorio)',/tel|phone|cell|mobile|numero/i],
+  ['name','Nome',/^(nome|first.?name|name|nominativo|contatto|contact)/i],
+  ['surname','Cognome',/cognome|last.?name|surname/i],
+  ['company','Azienda',/azienda|company|societ|ragione|account/i],
+  ['city','Città',/citt|city|comune|localit/i],
+  ['email','Email',/mail/i],
+  ['info','Altre informazioni',/note|comment|descri|title|ruolo|qualifica/i],
+];
+let impRows=null, impHead=null;
+function importSheet(rows, fileName){
+  impHead = rows[0].map(h=>h.trim()); impRows = rows.slice(1);
+  const used = new Set();
+  const sel = ([key,label,re])=>{
+    let g = impHead.findIndex((h,i)=>re.test(h) && !used.has(i)); if(g>=0) used.add(g);
+    return `<label>${label}<select id="map_${key}"><option value="-1">Nessuna colonna</option>${impHead.map((h,i)=>`<option value="${i}" ${i===g?'selected':''}>${esc(h||'Colonna '+(i+1))}</option>`).join('')}</select></label>`;
+  };
+  sheet(`<h2>Importa ${impRows.length.toLocaleString('it-IT')} righe</h2>
+    <p class="muted">Controlla che ogni campo punti alla colonna giusta del file.</p>
+    ${FIELDS.map(sel).join('')}
+    <label>Nome della lista<input type="text" id="impList" value="${esc(fileName.replace(/\.[^.]+$/,''))}"></label>
+    <div class="row"><button class="btn grow" data-act="close">Annulla</button><button class="btn primary grow" data-act="doImport">Importa</button></div>`);
+}
+async function doImport(){
+  const idx = Object.fromEntries(FIELDS.map(([k])=>[k, parseInt($('#map_'+k).value)]));
+  if(idx.phone<0) return toast('Scegli la colonna del telefono');
+  const list = $('#impList').value.trim() || 'Lista';
+  const have = new Set(contacts.map(c=>c.phone));
+  const get = (r,k)=> idx[k]>=0 ? String(r[idx[k]]||'').trim() : '';
+  let dup=0, bad=0; const add=[];
+  for(const r of impRows){
+    const phone = normPhone(get(r,'phone'), settings.prefix);
+    if(!phone){ bad++; continue; }
+    if(have.has(phone)){ dup++; continue; }
+    have.add(phone);
+    add.push({id:uid(), name:[get(r,'name'),get(r,'surname')].filter(Boolean).join(' '), company:get(r,'company'), phone,
+      city:get(r,'city'), email:get(r,'email'), info:get(r,'info'), list, status:'new', attempts:0, lastCallAt:null, callbackAt:null, note:'', calls:[], createdAt:Date.now()});
+  }
+  contacts.push(...add); await saveMany(add);
+  impRows=impHead=null; closeSheet(); tab='call'; render();
+  toast(`Importati ${add.length}. Doppioni saltati ${dup}, senza numero valido ${bad}.`);
+}
+
+/* ---------- esportazione ---------- */
+function download(name, text, type){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type})); a.download=name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+}
+const csvLine = arr => arr.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(';');
+const stamp = () => new Date().toISOString().slice(0,10);
+function expContacts(){
+  const rows=[csvLine(['Nome','Azienda','Telefono','Città','Email','Lista','Stato','Tentativi a vuoto','Chiamate totali','Ultima chiamata','Durata totale (sec)','Richiamo o appuntamento','Nota','Altre informazioni'])];
+  contacts.forEach(c=>rows.push(csvLine([c.name,c.company,c.phone,c.city,c.email,c.list,statusOf(c).label,c.attempts,c.calls.length,fmtDate(c.lastCallAt),c.calls.reduce((s,k)=>s+(k.dur||0),0),fmtDate(c.callbackAt),c.note,c.info])));
+  download(`contatti-${stamp()}.csv`, '﻿'+rows.join('\r\n'), 'text/csv');
+}
+function expCalls(){
+  const rows=[csvLine(['Data e ora','Nome','Azienda','Telefono','Lista','Esito','Durata (sec)','Nota'])]; const all=[];
+  contacts.forEach(c=>c.calls.forEach(k=>all.push([k.at,c,k])));
+  all.sort((a,b)=>a[0]-b[0]).forEach(([t,c,k])=>rows.push(csvLine([fmtDate(t),c.name,c.company,c.phone,c.list,OUT[k.outcome]?OUT[k.outcome].label:k.outcome,k.dur,k.note])));
+  download(`chiamate-${stamp()}.csv`, '﻿'+rows.join('\r\n'), 'text/csv');
+}
+function backup(){
+  download(`backup-registro-${stamp()}.json`, JSON.stringify({v:1,settings,contacts}), 'application/json');
+  meta.lastBackup=Date.now(); saveMeta(); render();
+}
+async function restore(text){
+  let d; try{ d=JSON.parse(text); }catch(e){ return toast('File di backup non valido'); }
+  if(!d || !Array.isArray(d.contacts)) return toast('File di backup non valido');
+  await idb('contacts','readwrite', s=>s.clear());
+  contacts = d.contacts; settings = {...DEFAULTS,...(d.settings||{})};
+  await saveMany(contacts); await saveMeta(); render(); toast('Ripristinati '+contacts.length+' contatti');
+}
+function demo(){
+  const d=[['Giovanni Sanna','Sanna Costruzioni Srl','079 123 4567','Sassari'],['Maria Piras','Studio Piras Commercialisti','070 765 4321','Cagliari'],
+    ['Luca Deiana','Deiana Impianti','333 111 2233','Olbia'],['Francesca Melis','Melis Arredamenti','347 555 6677','Nuoro'],
+    ['Antonio Cossu','Cossu Trasporti Snc','0783 22 334','Oristano'],['Elena Murgia','Farmacia Murgia','328 999 0011','Alghero']];
+  const add = d.map(([name,company,p,city])=>({id:uid(),name,company,phone:normPhone(p,settings.prefix),city,email:'',info:'',list:'Esempio',status:'new',attempts:0,lastCallAt:null,callbackAt:null,note:'',calls:[],createdAt:Date.now()}));
+  contacts.push(...add); saveMany(add); render(); toast('Contatti di esempio caricati (numeri finti)');
+}
+
+/* ---------- eventi ---------- */
+let wipeArmed=0;
+document.addEventListener('click', e=>{
+  const el = e.target.closest('[data-act]'); if(!el) return;
+  const act = el.dataset.act, id = el.dataset.id;
+  if(act==='overlay'){ if(e.target===el) closeSheet(); return; }
+  switch(act){
+    case 'tab': tab=id; shown=60; render(); break;
+    case 'list': listFilter=id; shown=60; render(); break;
+    case 'status': statusFilter=id; shown=60; render(); break;
+    case 'period': period=id; render(); break;
+    case 'more': shown+=100; render(); break;
+    case 'open': contactSheet(id); break;
+    case 'close': closeSheet(); break;
+    case 'call':   // il link tel: apre il telefono; qui si segna solo l'ora di partenza
+      pending={id,t0:Date.now()}; lsSet('pendingCall',pending);
+      setTimeout(()=>{ closeSheet(); tab='call'; render(); },400); break;
+    case 'cancelPending': pending=null; lsSet('pendingCall',null); render(); break;
+    case 'outcome': outcomeSheet(id, pending&&pending.id===id ? (Date.now()-pending.t0)/1000 : 0); break;
+    case 'pick': {
+      oSel=id; document.querySelectorAll('.out').forEach(b=>b.setAttribute('aria-pressed', b.dataset.id===id));
+      const o=OUT[id]; $('#oDateBox').hidden=!o.date;
+      if(o.date) $('#oDateLbl').textContent = id==='appointment' ? 'Data e ora dell\'appuntamento' : o.date==='req' ? 'Quando richiamare' : 'Prossimo contatto (facoltativo)';
+      break; }
+    case 'quick': {
+      const d=new Date();
+      if(id==='2h') d.setHours(d.getHours()+2);
+      else { d.setDate(d.getDate()+(id==='tom'?1:id==='3d'?3:7)); d.setHours(10,0,0,0); }
+      $('#oDate').value = toLocalInput(d.getTime()); break; }
+    case 'saveOutcome': saveOutcome(id); break;
+    case 'skip': skipped.add(id); render(); break;
+    case 'unskip': skipped.clear(); render(); break;
+    case 'saveNote': { const c=byId(id); c.note=$('#cNote').value.trim(); saveContact(c); toast('Nota salvata'); render(); break; }
+    case 'delContact':
+      if(el.dataset.armed){ contacts=contacts.filter(c=>c.id!==id); idb('contacts','readwrite',s=>s.delete(id)); closeSheet(); render(); toast('Contatto eliminato'); }
+      else { el.dataset.armed='1'; el.textContent='Tocca di nuovo per eliminare'; }
+      break;
+    case 'importCsv': $('#fileCsv').click(); break;
+    case 'doImport': doImport(); break;
+    case 'demo': demo(); break;
+    case 'expContacts': expContacts(); break;
+    case 'expCalls': expCalls(); break;
+    case 'backup': backup(); break;
+    case 'restore': $('#fileJson').click(); break;
+    case 'saveSettings':
+      settings.prefix = ($('#setPrefix').value.trim()||'+39'); if(settings.prefix[0]!=='+') settings.prefix='+'+settings.prefix;
+      settings.maxAttempts = Math.max(1, parseInt($('#setMax').value)||4); saveMeta(); render(); toast('Impostazioni salvate'); break;
+    case 'wipe':
+      if(Date.now()-wipeArmed<5000){ contacts=[]; skipped.clear(); pending=null; lsSet('pendingCall',null); idb('contacts','readwrite',s=>s.clear()); render(); toast('Tutto cancellato'); }
+      else { wipeArmed=Date.now(); el.textContent='Tocca di nuovo entro 5 secondi per confermare'; }
+      break;
+  }
+});
+document.addEventListener('input', e=>{
+  if(e.target.id==='q'){ query=e.target.value; shown=60; const pos=e.target.selectionStart; render(); const q=$('#q'); q.focus(); q.setSelectionRange(pos,pos); }
+});
+$('#fileCsv').addEventListener('change', async e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f) return;
+  const rows = parseCSV(await f.text());
+  if(rows.length<2) return toast('Il file è vuoto o non è un CSV');
+  importSheet(rows, f.name);
+});
+$('#fileJson').addEventListener('change', async e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f) return; restore(await f.text());
+});
+// Al ritorno dalla telefonata si apre da solo il pannello dell'esito con la durata stimata.
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible' && pending && byId(pending.id) && Date.now()-pending.t0>1500 && !$('.overlay')){
+    render(); outcomeSheet(pending.id, (Date.now()-pending.t0)/1000);
+  }
+});
+
+(async function start(){
+  db = await openDB();
+  contacts = (await idb('contacts','readonly', s=>s.getAll())) || [];
+  contacts.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+  settings = {...DEFAULTS, ...((await idb('meta','readonly', s=>s.get('settings')))||{})};
+  meta = (await idb('meta','readonly', s=>s.get('meta'))) || {};
+  if(pending && !byId(pending.id)){ pending=null; lsSet('pendingCall',null); }
+  render();
+  if(pending) outcomeSheet(pending.id, (Date.now()-pending.t0)/1000);
+})();
+</script>
+</body>
+</html>
