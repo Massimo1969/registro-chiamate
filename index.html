@@ -130,7 +130,24 @@ const OUTCOMES = [
   {id:'wrong',          label:'Numero errato',        tone:'crit'},
   {id:'dnc',            label:'Non chiamare più',     tone:'crit', reached:true, block:true},
 ];
-const DEFAULTS = { prefix:'+39', maxAttempts:4 };   // prefisso per numeri senza +, tentativi massimi a vuoto
+const DEFAULTS = { prefix:'+39', maxAttempts:4 };
+const APPT_MINUTES = 30;   // durata di un appuntamento in Google Calendar (i richiami durano 15 minuti)   // prefisso per numeri senza +, tentativi massimi a vuoto
+// Link Zoom fisso per gli appuntamenti e link Zoom Scheduler per far scegliere l'orario al contatto
+const ZOOM_LINK = 'https://us06web.zoom.us/j/86262800075?pwd=xcQNNSd18dgStUa4IcaSqJ0b0G7GIK.1';
+const SCHEDULER_LINK = 'https://scheduler.zoom.us/massimo-morvillo/appuntamento-con-massimo-morvillo';
+// Messaggi WhatsApp. {giorno} {ora} {zoom} {link} vengono sostituiti dall'app.
+const MSG_CONFERMA = `Buongiorno, le confermo il nostro appuntamento su Zoom di {giorno} alle {ora}.
+
+Per collegarsi basta toccare questo link:
+{zoom}
+
+A presto,
+Massimo Morvillo`;
+const MSG_PRENOTA = `Buongiorno, come d'accordo le lascio il link per scegliere il giorno e l'ora del nostro appuntamento su Zoom:
+{link}
+
+A presto,
+Massimo Morvillo`;
 /* ========================================================================== */
 
 /*PURE-START*/
@@ -356,6 +373,8 @@ function contactSheet(id){
     ${blocked?`<div class="banner">Contatto da non chiamare più.</div>`:`<a class="callbtn" href="tel:${esc(c.phone)}" data-act="call" data-id="${c.id}">Chiama</a>`}
     <div class="row"><button class="btn grow" data-act="outcome" data-id="${c.id}">Registra esito</button>
       ${blocked?'':`<a class="btn grow" href="https://wa.me/${wa}" target="_blank" rel="noopener">WhatsApp</a>`}</div>
+    ${c.callbackAt && ['callback','interested','appointment'].includes(c.status) ? gcalBtn(c) : ''}
+    ${['interested','appointment'].includes(c.status) ? waBtn(c) : ''}
     <label>Nota sul contatto<textarea id="cNote">${esc(c.note)}</textarea></label>
     <button class="btn" data-act="saveNote" data-id="${c.id}">Salva nota</button>
     <h3>Storico chiamate (${c.calls.length})</h3>
@@ -387,6 +406,35 @@ function addNum(mode, raw, name, company){
   if(mode==='call'){ pending={id:c.id,t0:Date.now()}; lsSet('pendingCall',pending); tab='call'; render(); window.location.href='tel:'+phone; }
   else { render(); toast('Aggiunto alla lista'); }
 }
+function gcalUrl(c){
+  const appt = c.status==='appointment';
+  const f = t => new Date(t).toISOString().replace(/[-:]|\.\d{3}/g,'');
+  const who = [c.name, c.company].filter(Boolean).join(' - ') || c.phone;
+  const details = ['Telefono: '+c.phone, c.info, c.note?'Nota: '+c.note:'', appt&&ZOOM_LINK?'Zoom: '+ZOOM_LINK:''].filter(Boolean).join('\n');
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent((appt?'Appuntamento: ':'Richiamare: ')+who) +
+    '&dates=' + f(c.callbackAt) + '/' + f(c.callbackAt + (appt?APPT_MINUTES:15)*60000) + '&details=' + encodeURIComponent(details) + (appt&&ZOOM_LINK ? '&location='+encodeURIComponent(ZOOM_LINK) : '');
+}
+const gcalBtn = c => `<a class="btn" href="${esc(gcalUrl(c))}" target="_blank" rel="noopener">Aggiungi a Google Calendar</a>`;
+function waMsg(c){
+  if(c.status==='appointment' && c.callbackAt){
+    const d = new Date(c.callbackAt);
+    return MSG_CONFERMA.replace('{giorno}', d.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'}))
+      .replace('{ora}', d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})).replace('{zoom}', ZOOM_LINK);
+  }
+  return MSG_PRENOTA.replace('{link}', SCHEDULER_LINK);
+}
+function waBtn(c, cls){
+  const label = c.status==='appointment' ? 'Invia conferma su WhatsApp' : 'Invia link per prenotare su WhatsApp';
+  return `<a class="btn ${cls||''}" href="https://wa.me/${c.phone.replace(/\D/g,'')}?text=${encodeURIComponent(waMsg(c))}" target="_blank" rel="noopener">${label}</a>`;
+}
+function calSheet(c){
+  const appt = c.status==='appointment';
+  sheet(`<span class="pill t-${appt?'good':'info'}" style="align-self:flex-start">${appt?'Appuntamento salvato':'Interessato salvato'}</span>
+    <h2>${esc(c.name||c.company||c.phone)}</h2>${c.callbackAt?`<div class="phone">${esc(fmtDate(c.callbackAt))}</div>`:''}
+    ${waBtn(c,'primary')}
+    ${c.callbackAt?gcalBtn(c):''}
+    <button class="btn" data-act="close">Continua con le chiamate</button>`);
+}
 let oSel=null;
 function outcomeSheet(id, sec){
   const c = byId(id); if(!c) return; oSel=null;
@@ -414,7 +462,8 @@ function saveOutcome(id){
   if(note) c.note = note;
   saveContact(c);
   if(pending && pending.id===id){ pending=null; lsSet('pendingCall',null); }
-  closeSheet(); render(); toast('Salvato: '+o.label);
+  closeSheet(); render();
+  if(o.id==='appointment' || o.id==='interested') calSheet(c); else toast('Salvato: '+o.label);
 }
 
 /* ---------- importazione CSV ---------- */
