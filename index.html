@@ -65,7 +65,7 @@ nav .dot{position:absolute;top:5px;right:calc(50% - 26px);background:var(--crit)
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .callbtn{color:#06231a}}
 .who{font:800 25px/1.15 var(--display);overflow-wrap:anywhere}
 .phone{font:700 19px var(--display);font-variant-numeric:tabular-nums;letter-spacing:.4px}
-input[type=text],input[type=search],input[type=number],input[type=datetime-local],select,textarea{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 12px}
+input[type=text],input[type=tel],input[type=search],input[type=number],input[type=datetime-local],select,textarea{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 12px}
 textarea{min-height:70px;resize:vertical}
 label{font-size:13px;font-weight:600;color:var(--ink2);display:flex;flex-direction:column;gap:4px}
 .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
@@ -83,6 +83,11 @@ label{font-size:13px;font-weight:600;color:var(--ink2);display:flex;flex-directi
 .bar{display:grid;grid-template-columns:150px 1fr 44px;gap:8px;align-items:center;font-size:14px}
 .bar i{display:block;height:12px;border-radius:6px;background:var(--accent);min-width:2px}
 .bar em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.dialnum{font:800 26px var(--display);letter-spacing:1px;min-height:44px;display:flex;align-items:center;justify-content:center;border-bottom:2px solid var(--line);font-variant-numeric:tabular-nums}
+.dialnum .muted{font:400 14px var(--body);letter-spacing:0}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.key{border:1px solid var(--line);background:var(--bg);border-radius:12px;height:52px;font:700 23px var(--display)}
+.key:active{background:var(--info-bg)}
 .outgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .out{border:2px solid var(--line);background:var(--card);border-radius:10px;padding:12px 8px;font-weight:700;font-size:14.5px}
 .out[aria-pressed="true"]{border-color:var(--accent);background:var(--info-bg)}
@@ -189,7 +194,7 @@ const saveMany = list => idb('contacts','readwrite', s=>{ list.forEach(c=>s.put(
 const saveMeta = () => idb('meta','readwrite', s=>{ s.put(settings,'settings'); s.put(meta,'meta'); });
 
 /* ---------- stato interfaccia ---------- */
-let tab='call', listFilter='', statusFilter='', query='', shown=60, period='today', skipped=new Set(), toastT=null;
+let dial='', tab='call', listFilter='', statusFilter='', query='', shown=60, period='today', skipped=new Set(), toastT=null;
 let pending = lsGet('pendingCall');   // chiamata avviata e non ancora registrata
 
 const byId = id => contacts.find(c=>c.id===id);
@@ -220,10 +225,18 @@ function render(){
   m.innerHTML = ({call:callView,contacts:contactsView,agenda:agendaView,stats:statsView,data:dataView})[tab]();
 }
 function emptyView(){
-  return `<div class="card"><h2>Carica la tua lista</h2>
+  return (tab==='call'?dialPad():'') + `<div class="card"><h2>Carica la tua lista</h2>
   <p class="muted">Esporta i contatti dal CRM in formato CSV e importali qui. I dati restano solo su questo telefono.</p>
   <button class="btn primary" data-act="importCsv">Importa file CSV</button>
   <button class="btn" data-act="demo">Prova con 6 contatti di esempio</button></div>`;
+}
+function dialPad(){
+  return `<div class="card"><h3>Componi un numero</h3>
+    <div class="dialnum" id="dialNum">${esc(dial)||'<span class="muted">Scrivi il numero con i tasti</span>'}</div>
+    <div class="pad">${['1','2','3','4','5','6','7','8','9','+','0'].map(k=>`<button class="key" data-act="key" data-id="${k}">${k}</button>`).join('')}<button class="key" data-act="bksp" aria-label="Cancella l'ultima cifra">⌫</button></div>
+    <input type="text" id="dName" autocomplete="off" placeholder="Nome o azienda (facoltativo)">
+    <button class="btn primary" data-act="dialGo" data-id="call">Chiama e aggiungi alla lista</button>
+    <button class="btn" data-act="dialGo" data-id="add">Aggiungi senza chiamare</button></div>`;
 }
 function listChips(){
   const ls = lists(); if(ls.length<2) return '';
@@ -243,7 +256,7 @@ function callView(){
       <button class="btn" data-act="cancelPending">Annulla, non ho chiamato</button></div>`;
   }
   if(!q.length) return h + `<div class="card"><h2>Coda vuota</h2><p class="muted">Nessun contatto da chiamare in questa lista. Importa altri contatti o guarda i richiami in programma.</p>
-    ${skipped.size?`<button class="btn" data-act="unskip">Rimetti in coda i ${skipped.size} saltati</button>`:''}</div>`;
+    ${skipped.size?`<button class="btn" data-act="unskip">Rimetti in coda i ${skipped.size} saltati</button>`:''}</div>${dialPad()}`;
   const c = q[0];
   const last = c.calls[c.calls.length-1];
   h += `<div class="card">
@@ -260,14 +273,14 @@ function callView(){
     <button class="btn grow" data-act="outcome" data-id="${c.id}">Esito senza chiamare</button>
     <button class="btn grow" data-act="open" data-id="${c.id}">Scheda</button></div></div>`;
   if(q[1]) h += `<div class="muted">Prossimo: ${esc(q[1].name||q[1].company||q[1].phone)}</div>`;
-  return h;
+  return h + `${dialPad()}`;
 }
 function contactsView(){
   const qq = query.trim().toLowerCase();
   const res = contacts.filter(c=>(!listFilter||c.list===listFilter) && (!statusFilter||c.status===statusFilter) &&
     (!qq || (c.name+' '+c.company+' '+c.phone+' '+c.city).toLowerCase().includes(qq)));
   const chips = [{id:'',label:'Tutti'},{id:'new',label:'Da chiamare'},...OUTCOMES];
-  return `<input type="search" id="q" placeholder="Cerca nome, azienda, telefono, città" value="${esc(query)}">
+  return `<input type="search" id="q" placeholder="Cerca nome, azienda, telefono, città" value="${esc(query)}"><button class="btn" data-act="newNum">Chiama un altro numero</button>
     <div class="chips">${chips.map(s=>`<button class="chip" data-act="status" data-id="${s.id}" aria-pressed="${statusFilter===s.id}">${esc(s.label)}</button>`).join('')}</div>
     ${listChips()}<div class="muted">${res.length.toLocaleString('it-IT')} risultati</div>
     <div class="list">${res.slice(0,shown).map(itemRow).join('')}</div>
@@ -347,6 +360,30 @@ function contactSheet(id){
       <span class="muted">Durata ${fmtDur(k.dur)}${k.note?' · '+esc(k.note):''}</span></div>`).join('') : `<div class="muted">Nessuna chiamata registrata.</div>`}
     <div class="row"><button class="btn grow" data-act="close">Chiudi</button><button class="btn danger" data-act="delContact" data-id="${c.id}">Elimina</button></div>`);
 }
+function newNumSheet(){
+  sheet(`<h2>Nuovo numero</h2>
+    <label>Telefono<input type="tel" inputmode="tel" id="nPhone" autocomplete="off" placeholder="Es. 333 1234567" style="font:700 22px var(--display);letter-spacing:.5px"></label>
+    <label>Nome (facoltativo)<input type="text" id="nName" autocomplete="off"></label>
+    <label>Azienda (facoltativo)<input type="text" id="nCompany" autocomplete="off"></label>
+    <button class="btn primary" data-act="addNum" data-id="call">Aggiungi e chiama</button>
+    <div class="row"><button class="btn grow" data-act="close">Annulla</button><button class="btn grow" data-act="addNum" data-id="add">Aggiungi senza chiamare</button></div>`);
+  setTimeout(()=>{ const i=$('#nPhone'); if(i) i.focus(); },50);
+}
+function addNum(mode, raw, name, company){
+  const phone = normPhone(raw, settings.prefix);
+  if(!phone) return toast('Scrivi un numero valido');
+  let c = contacts.find(x=>x.phone===phone);
+  if(c && mode==='add'){ toast('Numero già in lista'); return contactSheet(c.id); }
+  if(c && OUT[c.status] && OUT[c.status].block){ toast('Contatto da non chiamare più'); return contactSheet(c.id); }
+  if(!c){
+    c = {id:uid(), name, company, phone, city:'', email:'', info:'', list:'Aggiunti a mano',
+      status:'new', attempts:0, lastCallAt:null, callbackAt:null, note:'', calls:[], createdAt:Date.now(), ord:0};
+    contacts.push(c); saveContact(c);
+  }
+  dial=''; closeSheet();
+  if(mode==='call'){ pending={id:c.id,t0:Date.now()}; lsSet('pendingCall',pending); tab='call'; render(); window.location.href='tel:'+phone; }
+  else { render(); toast('Aggiunto alla lista'); }
+}
 let oSel=null;
 function outcomeSheet(id, sec){
   const c = byId(id); if(!c) return; oSel=null;
@@ -407,14 +444,14 @@ async function doImport(){
   const list = $('#impList').value.trim() || 'Lista';
   const have = new Set(contacts.map(c=>c.phone));
   const get = (r,k)=> idx[k]>=0 ? String(r[idx[k]]||'').trim() : '';
-  let dup=0, bad=0; const add=[];
+  let dup=0, bad=0; const add=[], t0=Date.now();
   for(const r of impRows){
     const phone = normPhone(get(r,'phone'), settings.prefix);
     if(!phone){ bad++; continue; }
     if(have.has(phone)){ dup++; continue; }
     have.add(phone);
     add.push({id:uid(), name:[get(r,'name'),get(r,'surname')].filter(Boolean).join(' '), company:get(r,'company'), phone,
-      city:get(r,'city'), email:get(r,'email'), info:get(r,'info'), list, status:'new', attempts:0, lastCallAt:null, callbackAt:null, note:'', calls:[], createdAt:Date.now()});
+      city:get(r,'city'), email:get(r,'email'), info:get(r,'info'), list, status:'new', attempts:0, lastCallAt:null, callbackAt:null, note:'', calls:[], createdAt:t0, ord:add.length});
   }
   contacts.push(...add); await saveMany(add);
   impRows=impHead=null; closeSheet(); tab='call'; render();
@@ -454,7 +491,7 @@ function demo(){
   const d=[['Giovanni Sanna','Sanna Costruzioni Srl','079 123 4567','Sassari'],['Maria Piras','Studio Piras Commercialisti','070 765 4321','Cagliari'],
     ['Luca Deiana','Deiana Impianti','333 111 2233','Olbia'],['Francesca Melis','Melis Arredamenti','347 555 6677','Nuoro'],
     ['Antonio Cossu','Cossu Trasporti Snc','0783 22 334','Oristano'],['Elena Murgia','Farmacia Murgia','328 999 0011','Alghero']];
-  const add = d.map(([name,company,p,city])=>({id:uid(),name,company,phone:normPhone(p,settings.prefix),city,email:'',info:'',list:'Esempio',status:'new',attempts:0,lastCallAt:null,callbackAt:null,note:'',calls:[],createdAt:Date.now()}));
+  const add = d.map(([name,company,p,city],i)=>({ord:i,id:uid(),name,company,phone:normPhone(p,settings.prefix),city,email:'',info:'',list:'Esempio',status:'new',attempts:0,lastCallAt:null,callbackAt:null,note:'',calls:[],createdAt:Date.now()}));
   contacts.push(...add); saveMany(add); render(); toast('Contatti di esempio caricati (numeri finti)');
 }
 
@@ -471,6 +508,11 @@ document.addEventListener('click', e=>{
     case 'period': period=id; render(); break;
     case 'more': shown+=100; render(); break;
     case 'open': contactSheet(id); break;
+    case 'newNum': newNumSheet(); break;
+    case 'addNum': addNum(id, $('#nPhone').value, $('#nName').value.trim(), $('#nCompany').value.trim()); break;
+    case 'key': if(dial.length<16){ dial+=id; $('#dialNum').textContent=dial; } break;
+    case 'bksp': dial=dial.slice(0,-1); $('#dialNum').innerHTML = esc(dial)||'<span class="muted">Scrivi il numero con i tasti</span>'; break;
+    case 'dialGo': addNum(id, dial, $('#dName').value.trim(), ''); break;
     case 'close': closeSheet(); break;
     case 'call':   // il link tel: apre il telefono; qui si segna solo l'ora di partenza
       pending={id,t0:Date.now()}; lsSet('pendingCall',pending);
@@ -533,7 +575,7 @@ document.addEventListener('visibilitychange', ()=>{
 (async function start(){
   db = await openDB();
   contacts = (await idb('contacts','readonly', s=>s.getAll())) || [];
-  contacts.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+  contacts.sort((a,b)=>((a.createdAt||0)-(b.createdAt||0)) || ((a.ord||0)-(b.ord||0)));
   settings = {...DEFAULTS, ...((await idb('meta','readonly', s=>s.get('settings')))||{})};
   meta = (await idb('meta','readonly', s=>s.get('meta'))) || {};
   if(pending && !byId(pending.id)){ pending=null; lsSet('pendingCall',null); }
