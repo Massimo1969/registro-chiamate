@@ -265,6 +265,7 @@ function callView(){
     ${c.name&&c.company?`<div>${esc(c.company)}</div>`:''}
     <div class="muted">${esc([c.city,c.email,c.list].filter(Boolean).join(' · '))}</div>
     ${c.info?`<div class="muted">${esc(c.info)}</div>`:''}
+    ${c.desc?`<div class="muted">${esc(c.desc)}</div>`:''}
     ${c.note?`<div><b>Nota:</b> ${esc(c.note)}</div>`:''}
     ${last?`<div class="muted">Ultima: ${esc(fmtDate(last.at))} · ${esc(OUT[last.outcome]?OUT[last.outcome].label:last.outcome)}</div>`:''}
     <div class="phone">${esc(c.phone)}</div>
@@ -325,7 +326,8 @@ function dataView(){
     <button class="btn primary" data-act="importCsv">Importa file CSV</button></div>
   <div class="card"><h3>Esporta</h3>
     <button class="btn" data-act="expContacts">Contatti con esito (CSV)</button>
-    <button class="btn" data-act="expCalls">Registro di tutte le chiamate (CSV)</button></div>
+    <button class="btn" data-act="expCalls">Registro di tutte le chiamate (CSV)</button>
+    <button class="btn" data-act="expCRM">Contatti chiamati, formato SalesScripter (CSV)</button></div>
   <div class="card"><h3>Backup</h3>
     <button class="btn" data-act="backup">Scarica backup completo</button>
     <button class="btn" data-act="restore">Ripristina da backup</button></div>
@@ -349,6 +351,7 @@ function contactSheet(id){
     <h2>${esc(c.name||c.company||'Senza nome')}</h2>
     <div class="muted">${esc([c.company&&c.name?c.company:'',c.city,c.email,c.list].filter(Boolean).join(' · '))}</div>
     ${c.info?`<div class="muted">${esc(c.info)}</div>`:''}
+    ${c.desc?`<div class="muted">${esc(c.desc)}</div>`:''}
     <div class="phone">${esc(c.phone)}</div>
     ${blocked?`<div class="banner">Contatto da non chiamare più.</div>`:`<a class="callbtn" href="tel:${esc(c.phone)}" data-act="call" data-id="${c.id}">Chiama</a>`}
     <div class="row"><button class="btn grow" data-act="outcome" data-id="${c.id}">Registra esito</button>
@@ -416,24 +419,26 @@ function saveOutcome(id){
 
 /* ---------- importazione CSV ---------- */
 const FIELDS = [
-  ['phone','Telefono (obbligatorio)',/tel|phone|cell|mobile|numero/i],
+  ['phone','Telefono (obbligatorio)',[/^(phone|telefono|tel)$/i,/mobile|cell/i,/tel|phone|numero/i]],
   ['name','Nome',/^(nome|first.?name|name|nominativo|contatto|contact)/i],
   ['surname','Cognome',/cognome|last.?name|surname/i],
   ['company','Azienda',/azienda|company|societ|ragione|account/i],
   ['city','Città',/citt|city|comune|localit/i],
   ['email','Email',/mail/i],
-  ['info','Altre informazioni',/note|comment|descri|title|ruolo|qualifica/i],
+  ['info','Categoria o ruolo',[/categoria|category/i,/title|ruolo|qualifica/i,/note|comment/i]],
+  ['desc','Descrizione del CRM',/descri/i],
 ];
 let impRows=null, impHead=null;
 function importSheet(rows, fileName){
   impHead = rows[0].map(h=>h.trim()); impRows = rows.slice(1);
   const used = new Set();
   const sel = ([key,label,re])=>{
-    let g = impHead.findIndex((h,i)=>re.test(h) && !used.has(i)); if(g>=0) used.add(g);
+    let g=-1; for(const r of (Array.isArray(re)?re:[re])){ g = impHead.findIndex((h,i)=>r.test(h) && !used.has(i)); if(g>=0) break; }
+    if(g>=0) used.add(g);
     return `<label>${label}<select id="map_${key}"><option value="-1">Nessuna colonna</option>${impHead.map((h,i)=>`<option value="${i}" ${i===g?'selected':''}>${esc(h||'Colonna '+(i+1))}</option>`).join('')}</select></label>`;
   };
   sheet(`<h2>Importa ${impRows.length.toLocaleString('it-IT')} righe</h2>
-    <p class="muted">Controlla che ogni campo punti alla colonna giusta del file.</p>
+    <p class="muted">Controlla che ogni campo punti alla colonna giusta del file. Se il telefono principale è vuoto, l'app prova da sola le altre colonne telefoniche (prima il cellulare).</p>
     ${FIELDS.map(sel).join('')}
     <label>Nome della lista<input type="text" id="impList" value="${esc(fileName.replace(/\.[^.]+$/,''))}"></label>
     <div class="row"><button class="btn grow" data-act="close">Annulla</button><button class="btn primary grow" data-act="doImport">Importa</button></div>`);
@@ -445,13 +450,16 @@ async function doImport(){
   const have = new Set(contacts.map(c=>c.phone));
   const get = (r,k)=> idx[k]>=0 ? String(r[idx[k]]||'').trim() : '';
   let dup=0, bad=0; const add=[], t0=Date.now();
+  const isMob = i => /mobile|cell/i.test(impHead[i]) ? 1 : 0;
+  const alt = impHead.map((h,i)=>i).filter(i=>i!==idx.phone && /phone|mobile|cell|tel/i.test(impHead[i]) && !/fax|ass/i.test(impHead[i])).sort((a,b)=>isMob(b)-isMob(a));
   for(const r of impRows){
-    const phone = normPhone(get(r,'phone'), settings.prefix);
+    let phone = normPhone(get(r,'phone'), settings.prefix);
+    for(const i of alt){ if(phone) break; phone = normPhone(r[i], settings.prefix); }
     if(!phone){ bad++; continue; }
     if(have.has(phone)){ dup++; continue; }
     have.add(phone);
-    add.push({id:uid(), name:[get(r,'name'),get(r,'surname')].filter(Boolean).join(' '), company:get(r,'company'), phone,
-      city:get(r,'city'), email:get(r,'email'), info:get(r,'info'), list, status:'new', attempts:0, lastCallAt:null, callbackAt:null, note:'', calls:[], createdAt:t0, ord:add.length});
+    add.push({id:uid(), name:[get(r,'name'),get(r,'surname')].filter(Boolean).join(' '), first:get(r,'name'), last:get(r,'surname'), company:get(r,'company'), phone,
+      city:get(r,'city'), email:get(r,'email'), info:get(r,'info'), desc:get(r,'desc'), list, status:'new', attempts:0, lastCallAt:null, callbackAt:null, note:'', calls:[], createdAt:t0, ord:add.length});
   }
   contacts.push(...add); await saveMany(add);
   impRows=impHead=null; closeSheet(); tab='call'; render();
@@ -475,6 +483,22 @@ function expCalls(){
   contacts.forEach(c=>c.calls.forEach(k=>all.push([k.at,c,k])));
   all.sort((a,b)=>a[0]-b[0]).forEach(([t,c,k])=>rows.push(csvLine([fmtDate(t),c.name,c.company,c.phone,c.list,OUT[k.outcome]?OUT[k.outcome].label:k.outcome,k.dur,k.note])));
   download(`chiamate-${stamp()}.csv`, '﻿'+rows.join('\r\n'), 'text/csv');
+}
+function expCRM(){
+  const line = arr => arr.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',');
+  const rows=[line(['First Name','Last Name','Account Name','Phone','Email','Mailing City','Categoria professionale','Description'])];
+  const done = contacts.filter(c=>c.calls.length);
+  if(!done.length) return toast('Nessuna chiamata registrata da esportare');
+  done.forEach(c=>{
+    const esito = `Esito chiamata: ${statusOf(c).label} (${fmtDate(c.lastCallAt)}), chiamate fatte: ${c.calls.length}` +
+      (c.callbackAt?`, prossimo contatto: ${fmtDate(c.callbackAt)}`:'') + (c.note?`, nota: ${c.note}`:'');
+    rows.push(line([c.first!=null?c.first:c.name, c.last||'', c.company, c.phone, c.email, c.city, c.info, [c.desc,esito].filter(Boolean).join(' | ')]));
+  });
+  download(`per-salesscripter-${stamp()}.csv`, '\uFEFF'+rows.join('\r\n'), 'text/csv');
+}
+async function readText(f){
+  const buf = await f.arrayBuffer();
+  try{ return new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch(e){ return new TextDecoder('windows-1252').decode(buf); }
 }
 function backup(){
   download(`backup-registro-${stamp()}.json`, JSON.stringify({v:1,settings,contacts}), 'application/json');
@@ -542,6 +566,7 @@ document.addEventListener('click', e=>{
     case 'demo': demo(); break;
     case 'expContacts': expContacts(); break;
     case 'expCalls': expCalls(); break;
+    case 'expCRM': expCRM(); break;
     case 'backup': backup(); break;
     case 'restore': $('#fileJson').click(); break;
     case 'saveSettings':
@@ -558,7 +583,7 @@ document.addEventListener('input', e=>{
 });
 $('#fileCsv').addEventListener('change', async e=>{
   const f=e.target.files[0]; e.target.value=''; if(!f) return;
-  const rows = parseCSV(await f.text());
+  const rows = parseCSV(await readText(f));
   if(rows.length<2) return toast('Il file è vuoto o non è un CSV');
   importSheet(rows, f.name);
 });
