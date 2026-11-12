@@ -68,7 +68,7 @@ nav .dot{position:absolute;top:5px;right:calc(50% - 26px);background:var(--crit)
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .callbtn{color:#06231a}}
 .who{font:800 25px/1.15 var(--display);overflow-wrap:anywhere}
 .phone{font:700 19px var(--display);font-variant-numeric:tabular-nums;letter-spacing:.4px}
-input[type=text],input[type=tel],input[type=search],input[type=number],input[type=datetime-local],select,textarea{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 12px}
+input[type=text],input[type=date],input[type=tel],input[type=search],input[type=number],input[type=datetime-local],select,textarea{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 12px}
 textarea{min-height:70px;resize:vertical}
 label{font-size:13px;font-weight:600;color:var(--ink2);display:flex;flex-direction:column;gap:4px}
 .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
@@ -91,6 +91,13 @@ label{font-size:13px;font-weight:600;color:var(--ink2);display:flex;flex-directi
 .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .key{border:1px solid var(--line);background:var(--bg);border-radius:12px;height:52px;font:700 23px var(--display)}
 .key:active{background:var(--info-bg)}
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;font-variant-numeric:tabular-nums}
+th,td{padding:8px 9px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font-size:12px;font-weight:600;color:var(--ink2);white-space:normal;min-width:62px;vertical-align:bottom}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--card);white-space:nowrap}
+tfoot td{font-weight:800;border-bottom:0;border-top:2px solid var(--line)}
+.zero{color:var(--line)}
 .outgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .out{border:2px solid var(--line);background:var(--card);border-radius:10px;padding:12px 8px;font-weight:700;font-size:14.5px}
 .out[aria-pressed="true"]{border-color:var(--accent);background:var(--info-bg)}
@@ -133,6 +140,7 @@ const OUTCOMES = [
   {id:'wrong',          label:'Numero errato',        tone:'crit'},
   {id:'dnc',            label:'Non chiamare più',     tone:'crit', reached:true, block:true},
 ];
+const APP_VERSION = '1.7 del 12/11/2026';
 const DEFAULTS = { prefix:'+39', maxAttempts:4 };
 const APPT_MINUTES = 30;   // durata di un appuntamento in Google Calendar (i richiami durano 15 minuti)   // prefisso per numeri senza +, tentativi massimi a vuoto
 // Link Zoom fisso per gli appuntamenti e link Zoom Scheduler per far scegliere l'orario al contatto
@@ -214,7 +222,7 @@ const saveMany = list => idb('contacts','readwrite', s=>{ list.forEach(c=>s.put(
 const saveMeta = () => idb('meta','readwrite', s=>{ s.put(settings,'settings'); s.put(meta,'meta'); });
 
 /* ---------- stato interfaccia ---------- */
-let dial='', tab='call', listFilter='', statusFilter='', query='', shown=60, period='today', skipped=new Set(), toastT=null;
+let statFrom='', statTo='', groupBy='day', statRows=31, dial='', tab='call', listFilter='', statusFilter='', query='', shown=60, period='today', skipped=new Set(), toastT=null;
 let pending = lsGet('pendingCall');   // chiamata avviata e non ancora registrata
 
 const byId = id => contacts.find(c=>c.id===id);
@@ -317,31 +325,81 @@ function agendaView(){
   return `<div class="list">${a.map(c=>`<button class="item ${c.callbackAt<=now?'late':''}" data-act="open" data-id="${c.id}">
     <span class="grow"><b>${esc(c.name||c.company||c.phone)}</b><small>${esc(fmtDate(c.callbackAt))}${c.callbackAt<=now?' · scaduto':''}${c.note?' · '+esc(c.note):''}</small></span>${pill(c)}</button>`).join('')}</div>`;
 }
+/*STATS-START*/
+const pad2 = n => String(n).padStart(2,'0');
+const fmtShort = d => pad2(d.getDate())+'/'+pad2(d.getMonth()+1);
+function fmtLong(sec){ sec=Math.round(sec||0); const hh=Math.floor(sec/3600), m=Math.floor(sec%3600/60), s=sec%60; return hh ? hh+'h '+pad2(m)+'m' : m+'m '+pad2(s)+'s'; }
+function startOfDay(t){ const d=new Date(t); d.setHours(0,0,0,0); return d; }
+function mondayOf(t){ const d=startOfDay(t); d.setDate(d.getDate()-((d.getDay()+6)%7)); return d; }
+function statRange(per, from, to, now){
+  now = now || Date.now();
+  if(per==='today') return [startOfDay(now).getTime(), Infinity];
+  if(per==='week') return [mondayOf(now).getTime(), Infinity];
+  if(per==='month'){ const d=startOfDay(now); d.setDate(1); return [d.getTime(), Infinity]; }
+  if(per==='custom') return [from ? new Date(from+'T00:00:00').getTime() : 0, to ? new Date(to+'T23:59:59.999').getTime() : Infinity];
+  return [0, Infinity];
+}
+function groupCalls(calls, by){
+  const map = new Map();
+  for(const k of calls){
+    let d, label;
+    if(by==='month'){ d=startOfDay(k.at); d.setDate(1); label=d.toLocaleDateString('it-IT',{month:'long',year:'numeric'}); }
+    else if(by==='week'){ d=mondayOf(k.at); const e=new Date(d); e.setDate(e.getDate()+6); label='Dal '+fmtShort(d)+' al '+fmtShort(e)+'/'+String(e.getFullYear()).slice(2); }
+    else { d=startOfDay(k.at); label=d.toLocaleDateString('it-IT',{weekday:'short',day:'2-digit',month:'2-digit',year:'2-digit'}); }
+    let g = map.get(d.getTime()); if(!g){ g={key:d.getTime(),label,n:0,dur:0,by:{}}; map.set(g.key,g); }
+    g.n++; g.dur += k.dur||0; g.by[k.outcome] = (g.by[k.outcome]||0)+1;
+  }
+  return [...map.values()].sort((a,b)=>b.key-a.key);
+}
+/*STATS-END*/
+function statCalls(){
+  const [a,b] = statRange(period, statFrom, statTo); const calls=[];
+  contacts.forEach(c=>c.calls.forEach(k=>{ if(k.at>=a && k.at<=b) calls.push(k); }));
+  return calls;
+}
 function statsView(){
-  const from = period==='today' ? new Date().setHours(0,0,0,0) : period==='week' ? Date.now()-7*864e5 : 0;
-  const calls=[]; contacts.forEach(c=>c.calls.forEach(k=>{ if(k.at>=from) calls.push(k); }));
+  const calls = statCalls();
   const n = id => calls.filter(k=>k.outcome===id).length;
   const reached = calls.filter(k=>OUT[k.outcome]&&OUT[k.outcome].reached).length;
   const talk = calls.reduce((s,k)=>s+(k.dur||0),0);
   const pct = (a,b)=> b ? Math.round(a/b*100)+'%' : '0%';
   const max = Math.max(1,...OUTCOMES.map(o=>n(o.id)));
-  return `<div class="chips">${[['today','Oggi'],['week','Ultimi 7 giorni'],['all','Sempre']].map(([id,l])=>`<button class="chip" data-act="period" data-id="${id}" aria-pressed="${period===id}">${l}</button>`).join('')}</div>
+  const rows = groupCalls(calls, groupBy);
+  const cell = v => v ? v : '<span class="zero">·</span>';
+  const gLabel = {day:'giorno',week:'settimana',month:'mese'}[groupBy];
+  return `<div class="chips">${[['today','Oggi'],['week','Questa settimana'],['month','Questo mese'],['all','Sempre'],['custom','Da… a…']].map(([id,l])=>`<button class="chip" data-act="period" data-id="${id}" aria-pressed="${period===id}">${l}</button>`).join('')}</div>
+  ${period==='custom'?`<div class="row"><label class="grow">Dal<input type="date" id="sFrom" value="${esc(statFrom)}"></label><label class="grow">Al<input type="date" id="sTo" value="${esc(statTo)}"></label></div>`:''}
   <div class="tiles">
     <div class="tile"><b>${calls.length}</b><span>Chiamate fatte</span></div>
-    <div class="tile"><b>${fmtDur(talk)}</b><span>Tempo al telefono (min:sec)</span></div>
+    <div class="tile"><b>${fmtLong(talk)}</b><span>Tempo al telefono</span></div>
     <div class="tile"><b>${reached}</b><span>Contatti raggiunti (${pct(reached,calls.length)})</span></div>
     <div class="tile"><b>${n('appointment')}</b><span>Appuntamenti (${pct(n('appointment'),reached)} dei raggiunti)</span></div>
     <div class="tile"><b>${n('interested')}</b><span>Interessati</span></div>
     <div class="tile"><b>${n('customer')}</b><span>Clienti</span></div>
   </div>
-  <div class="card"><h3>Esiti</h3>${OUTCOMES.map(o=>`<div class="bar"><span>${esc(o.label)}</span><i style="width:${n(o.id)/max*100}%"></i><em>${n(o.id)}</em></div>`).join('')}</div>
-  <div class="card"><h3>Stato della lista</h3>${[{id:'new',label:'Da chiamare'},...OUTCOMES].map(o=>{const k=contacts.filter(c=>c.status===o.id).length;return `<div class="bar"><span>${esc(o.label)}</span><i style="width:${k/Math.max(1,contacts.length)*100}%"></i><em>${k}</em></div>`;}).join('')}</div>`;
+  <div class="card"><h3>Esiti nel periodo</h3>${OUTCOMES.map(o=>`<div class="bar"><span>${esc(o.label)}</span><i style="width:${n(o.id)/max*100}%"></i><em>${n(o.id)}</em></div>`).join('')}</div>
+  <div class="card"><h3>Dettaglio per ${gLabel}</h3>
+    <div class="chips">${[['day','Giornaliero'],['week','Settimanale'],['month','Mensile']].map(([id,l])=>`<button class="chip" data-act="group" data-id="${id}" aria-pressed="${groupBy===id}">${l}</button>`).join('')}</div>
+    ${rows.length ? `<div class="tblwrap"><table><thead><tr><th>${gLabel[0].toUpperCase()+gLabel.slice(1)}</th><th>Chiamate</th><th>Tempo</th>${OUTCOMES.map(o=>`<th>${esc(o.label)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.slice(0,statRows).map(g=>`<tr><td>${esc(g.label)}</td><td><b>${g.n}</b></td><td>${fmtLong(g.dur)}</td>${OUTCOMES.map(o=>`<td>${cell(g.by[o.id])}</td>`).join('')}</tr>`).join('')}</tbody>
+      <tfoot><tr><td>Totale</td><td>${calls.length}</td><td>${fmtLong(talk)}</td>${OUTCOMES.map(o=>`<td>${cell(n(o.id))}</td>`).join('')}</tr></tfoot></table></div>
+      ${rows.length>statRows?`<button class="btn small" data-act="moreStats">Mostra periodi precedenti</button>`:''}
+      <button class="btn small" data-act="expStats">Esporta questa tabella (CSV)</button>` : `<div class="muted">Nessuna chiamata registrata in questo periodo.</div>`}
+  </div>
+  <div class="card"><h3>Stato della lista, tutti i contatti</h3>${[{id:'new',label:'Da chiamare'},...OUTCOMES].map(o=>{const k=contacts.filter(c=>c.status===o.id).length;return `<div class="bar"><span>${esc(o.label)}</span><i style="width:${k/Math.max(1,contacts.length)*100}%"></i><em>${k}</em></div>`;}).join('')}</div>`;
+}
+function expStats(){
+  const calls = statCalls(), rows = groupCalls(calls, groupBy);
+  const out=[csvLine(['Periodo','Chiamate','Tempo al telefono (sec)',...OUTCOMES.map(o=>o.label)])];
+  rows.slice().reverse().forEach(g=>out.push(csvLine([g.label,g.n,g.dur,...OUTCOMES.map(o=>g.by[o.id]||0)])));
+  download(`statistiche-${groupBy}-${stamp()}.csv`, '﻿'+out.join('\r\n'), 'text/csv');
 }
 function dataView(){
   const hasCalls = contacts.some(c=>c.calls.length);
   const old = !meta.lastBackup || Date.now()-meta.lastBackup > 7*864e5;
   return `${!db?`<div class="banner">Questo browser non permette di salvare i dati. Apri la pagina in Chrome da un indirizzo https.</div>`:''}
   ${hasCalls&&old?`<div class="banner">Ultimo backup: ${meta.lastBackup?esc(fmtDate(meta.lastBackup)):'mai'}. Scarica un backup: se cancelli i dati di Chrome perdi tutto.</div>`:''}
+  <div class="muted">Versione ${APP_VERSION} · Ultimo backup: ${meta.lastBackup?esc(fmtDate(meta.lastBackup)):'mai fatto'}</div>
   <div class="card"><h3>Importa</h3><p class="muted">File CSV esportato dal CRM. I numeri già presenti vengono saltati.</p>
     <button class="btn primary" data-act="importCsv">Importa file CSV</button></div>
   <div class="card"><h3>Esporta</h3>
@@ -581,7 +639,12 @@ document.addEventListener('click', e=>{
     case 'tab': tab=id; shown=60; render(); break;
     case 'list': listFilter=id; shown=60; render(); break;
     case 'status': statusFilter=id; shown=60; render(); break;
-    case 'period': period=id; render(); break;
+    case 'period': period=id; statRows=31;
+      if(id==='custom' && !statFrom){ const d=new Date(); statTo=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); statFrom=statTo.slice(0,8)+'01'; }
+      render(); break;
+    case 'group': groupBy=id; statRows=31; render(); break;
+    case 'moreStats': statRows+=31; render(); break;
+    case 'expStats': expStats(); break;
     case 'more': shown+=100; render(); break;
     case 'open': contactSheet(id); break;
     case 'newNum': newNumSheet(); break;
@@ -632,6 +695,10 @@ document.addEventListener('click', e=>{
 });
 document.addEventListener('input', e=>{
   if(e.target.id==='q'){ query=e.target.value; shown=60; const pos=e.target.selectionStart; render(); const q=$('#q'); q.focus(); q.setSelectionRange(pos,pos); }
+});
+document.addEventListener('change', e=>{
+  if(e.target.id==='sFrom'){ statFrom=e.target.value; render(); }
+  if(e.target.id==='sTo'){ statTo=e.target.value; render(); }
 });
 $('#fileCsv').addEventListener('change', async e=>{
   const f=e.target.files[0]; e.target.value=''; if(!f) return;
