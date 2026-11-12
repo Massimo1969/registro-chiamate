@@ -72,6 +72,7 @@ input[type=text],input[type=date],input[type=tel],input[type=search],input[type=
 textarea{min-height:70px;resize:vertical}
 label{font-size:13px;font-weight:600;color:var(--ink2);display:flex;flex-direction:column;gap:4px}
 .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.chips.wrap{flex-wrap:wrap;overflow:visible}
 .chip{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:6px 12px;font-size:13.5px;font-weight:600;white-space:nowrap;color:var(--ink2)}
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--card);border-color:var(--ink)}
 .list{display:flex;flex-direction:column;gap:8px}
@@ -140,7 +141,7 @@ const OUTCOMES = [
   {id:'wrong',          label:'Numero errato',        tone:'crit'},
   {id:'dnc',            label:'Non chiamare più',     tone:'crit', reached:true, block:true},
 ];
-const APP_VERSION = '1.7 del 12/11/2026';
+const APP_VERSION = '1.8 del 12/11/2026';
 const DEFAULTS = { prefix:'+39', maxAttempts:4 };
 const APPT_MINUTES = 30;   // durata di un appuntamento in Google Calendar (i richiami durano 15 minuti)   // prefisso per numeri senza +, tentativi massimi a vuoto
 // Link Zoom fisso per gli appuntamenti e link Zoom Scheduler per far scegliere l'orario al contatto
@@ -367,7 +368,7 @@ function statsView(){
   const rows = groupCalls(calls, groupBy);
   const cell = v => v ? v : '<span class="zero">·</span>';
   const gLabel = {day:'giorno',week:'settimana',month:'mese'}[groupBy];
-  return `<div class="chips">${[['today','Oggi'],['week','Questa settimana'],['month','Questo mese'],['all','Sempre'],['custom','Da… a…']].map(([id,l])=>`<button class="chip" data-act="period" data-id="${id}" aria-pressed="${period===id}">${l}</button>`).join('')}</div>
+  return `<div class="chips wrap">${[['today','Oggi'],['week','Questa settimana'],['month','Questo mese'],['all','Sempre'],['custom','Da data a data']].map(([id,l])=>`<button class="chip" data-act="period" data-id="${id}" aria-pressed="${period===id}">${l}</button>`).join('')}</div>
   ${period==='custom'?`<div class="row"><label class="grow">Dal<input type="date" id="sFrom" value="${esc(statFrom)}"></label><label class="grow">Al<input type="date" id="sTo" value="${esc(statTo)}"></label></div>`:''}
   <div class="tiles">
     <div class="tile"><b>${calls.length}</b><span>Chiamate fatte</span></div>
@@ -379,7 +380,7 @@ function statsView(){
   </div>
   <div class="card"><h3>Esiti nel periodo</h3>${OUTCOMES.map(o=>`<div class="bar"><span>${esc(o.label)}</span><i style="width:${n(o.id)/max*100}%"></i><em>${n(o.id)}</em></div>`).join('')}</div>
   <div class="card"><h3>Dettaglio per ${gLabel}</h3>
-    <div class="chips">${[['day','Giornaliero'],['week','Settimanale'],['month','Mensile']].map(([id,l])=>`<button class="chip" data-act="group" data-id="${id}" aria-pressed="${groupBy===id}">${l}</button>`).join('')}</div>
+    <div class="chips wrap">${[['day','Giornaliero'],['week','Settimanale'],['month','Mensile']].map(([id,l])=>`<button class="chip" data-act="group" data-id="${id}" aria-pressed="${groupBy===id}">${l}</button>`).join('')}</div>
     ${rows.length ? `<div class="tblwrap"><table><thead><tr><th>${gLabel[0].toUpperCase()+gLabel.slice(1)}</th><th>Chiamate</th><th>Tempo</th>${OUTCOMES.map(o=>`<th>${esc(o.label)}</th>`).join('')}</tr></thead>
       <tbody>${rows.slice(0,statRows).map(g=>`<tr><td>${esc(g.label)}</td><td><b>${g.n}</b></td><td>${fmtLong(g.dur)}</td>${OUTCOMES.map(o=>`<td>${cell(g.by[o.id])}</td>`).join('')}</tr>`).join('')}</tbody>
       <tfoot><tr><td>Totale</td><td>${calls.length}</td><td>${fmtLong(talk)}</td>${OUTCOMES.map(o=>`<td>${cell(n(o.id))}</td>`).join('')}</tr></tfoot></table></div>
