@@ -99,6 +99,30 @@ th{font-size:12px;font-weight:600;color:var(--ink2);white-space:normal;min-width
 th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--card);white-space:nowrap}
 tfoot td{font-weight:800;border-bottom:0;border-top:2px solid var(--line)}
 .zero{color:var(--line)}
+.subtabs{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card)}
+.subtabs button{flex:1;border:0;background:none;padding:9px 4px;font-size:13.5px;font-weight:700;color:var(--ink2)}
+.subtabs button+button{border-left:1px solid var(--line)}
+.subtabs button[aria-pressed="true"]{background:var(--ink);color:var(--card)}
+details{border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+details.card{padding:16px}
+details>summary{cursor:pointer;font-weight:700;font-size:14.5px}
+details>summary h3{display:inline;font-size:17px}
+details[open]>summary{margin-bottom:10px}
+details>*+*{margin-top:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:420px){.grid2{grid-template-columns:1fr}}
+label.check{flex-direction:row;align-items:flex-start;gap:8px;font-weight:500;color:var(--ink);font-size:14.5px}
+label.check input{width:20px;height:20px;flex:none;margin:1px 0 0}
+.goal{height:10px;border-radius:5px;background:var(--mute-bg);overflow:hidden}
+.goal i{display:block;height:100%;background:var(--good);border-radius:5px}
+.script{white-space:pre-wrap;font-size:15px;line-height:1.5}
+table.heat td{text-align:center;min-width:54px}
+table.heat td:first-child{text-align:left;min-width:0}
+table.heat small{display:block;font-size:10.5px;color:var(--ink2)}
+.pipe{display:flex;gap:12px;overflow-x:auto;align-items:flex-start;padding-bottom:6px}
+.pcol{flex:0 0 250px;display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}
+.pcol h3{font-size:15px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.bar span small{color:var(--ink2)}
 .outgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .out{border:2px solid var(--line);background:var(--card);border-radius:10px;padding:12px 8px;font-weight:700;font-size:14.5px}
 .out[aria-pressed="true"]{border-color:var(--accent);background:var(--info-bg)}
@@ -141,8 +165,8 @@ const OUTCOMES = [
   {id:'wrong',          label:'Numero errato',        tone:'crit'},
   {id:'dnc',            label:'Non chiamare più',     tone:'crit', reached:true, block:true},
 ];
-const APP_VERSION = '1.9 del 12/11/2026';
-const DEFAULTS = { prefix:'+39', maxAttempts:4 };
+const APP_VERSION = '2.0 del 12/11/2026';
+const DEFAULTS = { prefix:'+39', maxAttempts:4, goal:50, smart:false, script:'' };
 const APPT_MINUTES = 30;   // durata di un appuntamento in Google Calendar (i richiami durano 15 minuti)   // prefisso per numeri senza +, tentativi massimi a vuoto
 // Link Zoom fisso per gli appuntamenti e link Zoom Scheduler per far scegliere l'orario al contatto
 const ZOOM_LINK = 'https://us06web.zoom.us/j/86262800075?pwd=xcQNNSd18dgStUa4IcaSqJ0b0G7GIK.1';
@@ -160,6 +184,23 @@ const MSG_PRENOTA = `Buongiorno, come d'accordo le lascio il link per scegliere 
 
 A presto,
 Massimo Morvillo`;
+// Elenchi per i campi facoltativi. Puoi aggiungere o togliere voci: le chiamate già registrate non cambiano.
+const SERVICES = ['Trading Room','Contratto annuale di analisi','Entrambi'];
+const WHO = ['Titolare','Segreteria','Collaboratore','Familiare','Segreteria telefonica'];
+const REASONS = ['Prezzo','Non ha tempo','Ha già un fornitore','Non investe','Non si fida','Altro'];
+const OBJECTIONS = ['Costa troppo','Devo pensarci','Mandami una mail','Non mi interessa','Ho già chi mi segue','Non ho tempo','Nessuna'];
+const STAGES = ['Apertura','Presentazione','Proposta','Chiusura'];
+const SCRIPTS = ['Script A','Script B','Script C'];
+const CHANNELS = ['Telefono','WhatsApp','Email'];
+const INVESTS = ['Banca','Consulente','Fai da te','Non investe'];
+const EXPERIENCE = ['Nessuna','Base','Avanzata'];
+const CAPITAL = ['Non dichiarato','Fino a 10.000 €','10.000-50.000 €','50.000-250.000 €','Oltre 250.000 €'];
+const DECIDERS = ['Da solo','Con il socio','Con il coniuge','Altri'];
+const APPT_RESULTS = ['Svolto','Saltato','Rinviato'];
+const NOCLOSE = ['Prezzo','Vuole pensarci','Ha scelto altro','Non è il momento','Altro'];
+const DEFAULT_TPL = { appointment: MSG_CONFERMA, interested: MSG_PRENOTA,
+  callback: `Buongiorno, come d'accordo la richiamo {giorno} alle {ora}.\n\nA presto,\nMassimo Morvillo`,
+  no_answer: `Buongiorno, ho provato a contattarla telefonicamente. Quando preferisce che la richiami?\n\nMassimo Morvillo` };
 /* ========================================================================== */
 
 /*PURE-START*/
@@ -188,6 +229,18 @@ function parseCSV(text){
   return rows.filter(r=>r.some(v=>v.trim()!==''));
 }
 function fmtDur(sec){ sec=Math.max(0,Math.round(sec||0)); const m=Math.floor(sec/60), s=sec%60; return m+':'+String(s).padStart(2,'0'); }
+function trailingRetries(c, OUTMAP){ let n=0; for(let i=c.calls.length-1;i>=0;i--){ const o=OUTMAP[c.calls[i].outcome]; if(o&&o.retry) n++; else break; } return n; }
+// Registra un esito. Con v.edit corregge l'ultima chiamata invece di aggiungerne una: le statistiche non contano una chiamata in più.
+function applyOutcome(c, o, v, OUTMAP){
+  if(v.edit && c.calls.length){
+    const k = c.calls[c.calls.length-1];
+    if(k.outcome!==o.id && !k.prev) k.prev = k.outcome;
+    k.outcome=o.id; k.dur=v.dur; k.note=v.note; k.edited=v.now;
+  } else { c.calls.push({at:v.now, dur:v.dur, outcome:o.id, note:v.note}); c.lastCallAt=v.now; }
+  c.status=o.id; c.attempts=trailingRetries(c,OUTMAP); c.callbackAt = o.date ? v.when : null;
+  if(v.note) c.note=v.note;
+  return c;
+}
 /*PURE-END*/
 
 const OUT = Object.fromEntries(OUTCOMES.map(o=>[o.id,o]));
@@ -223,7 +276,7 @@ const saveMany = list => idb('contacts','readwrite', s=>{ list.forEach(c=>s.put(
 const saveMeta = () => idb('meta','readwrite', s=>{ s.put(settings,'settings'); s.put(meta,'meta'); });
 
 /* ---------- stato interfaccia ---------- */
-let statFrom='', statTo='', groupBy='day', statRows=31, dial='', tab='call', listFilter='', statusFilter='', query='', shown=60, period='today', skipped=new Set(), toastT=null;
+let statTab='sum', statTarget=10, cView='list', statFrom='', statTo='', groupBy='day', statRows=31, dial='', tab='call', listFilter='', statusFilter='', query='', shown=60, period='today', skipped=new Set(), toastT=null;
 let pending = lsGet('pendingCall');   // chiamata avviata e non ancora registrata
 
 const byId = id => contacts.find(c=>c.id===id);
@@ -233,9 +286,9 @@ const pill = c => { const s=statusOf(c); return `<span class="pill t-${s.tone}">
 const isDue = c => (c.status==='callback'||c.status==='interested') && c.callbackAt && c.callbackAt<=Date.now();
 
 function queue(){
-  const pool = contacts.filter(c=>(!listFilter||c.list===listFilter) && !skipped.has(c.id));
+  const pool = contacts.filter(c=>(!listFilter||c.list===listFilter) && !skipped.has(c.id) && !(c.rpo&&c.rpo.listed));
   const due = pool.filter(isDue).sort((a,b)=>a.callbackAt-b.callbackAt);
-  const fresh = pool.filter(c=>c.status==='new');
+  let fresh = pool.filter(c=>c.status==='new'); if(settings.smart) fresh = smartOrder(fresh);
   const retry = pool.filter(c=>OUT[c.status] && OUT[c.status].retry && c.attempts<settings.maxAttempts).sort((a,b)=>(a.lastCallAt||0)-(b.lastCallAt||0));
   return [...due,...fresh,...retry];
 }
@@ -276,7 +329,8 @@ function callView(){
   const q = queue();
   const today = new Date().setHours(0,0,0,0);
   const doneToday = contacts.reduce((n,c)=>n+c.calls.filter(k=>k.at>=today).length,0);
-  let h = listChips() + `<div class="muted">In coda: <b>${q.length}</b> · Chiamate oggi: <b>${doneToday}</b></div>`;
+  let h = listChips() + `<div class="muted">In coda: <b>${q.length}</b> · Chiamate oggi: <b>${doneToday}</b>${settings.goal>0?` di ${settings.goal}`:''}${settings.smart?' · Coda intelligente attiva':''}</div>` +
+    (settings.goal>0 ? `<div class="goal" role="progressbar" aria-valuemin="0" aria-valuemax="${settings.goal}" aria-valuenow="${doneToday}"><i style="width:${Math.min(100,doneToday/settings.goal*100)}%"></i></div>` : '');
   if(pending && byId(pending.id)){
     const c = byId(pending.id);
     return h + `<div class="card"><span class="pill t-warn" style="align-self:flex-start">Chiamata da registrare</span>
@@ -289,7 +343,7 @@ function callView(){
   const c = q[0];
   const last = c.calls[c.calls.length-1];
   h += `<div class="card">
-    <div class="row">${pill(c)}${isDue(c)?`<span class="pill t-crit">Richiamo delle ${esc(fmtDate(c.callbackAt))}</span>`:''}${c.attempts?`<span class="muted">Tentativi: ${c.attempts}</span>`:''}</div>
+    <div class="row">${pill(c)}${isDue(c)?`<span class="pill t-crit">Richiamo delle ${esc(fmtDate(c.callbackAt))}</span>`:''}${c.attempts?`<span class="muted">Tentativi: ${c.attempts}</span>`:''}${tagPills(c)}${c.rpo&&c.rpo.date?'':'<span class="pill t-mute">Registro Opposizioni non verificato</span>'}</div>
     <div class="who">${esc(c.name||c.company||'Senza nome')}</div>
     ${c.name&&c.company?`<div>${esc(c.company)}</div>`:''}
     <div class="muted">${esc([c.city,c.email,c.list].filter(Boolean).join(' · '))}</div>
@@ -297,6 +351,8 @@ function callView(){
     ${c.desc?`<div class="muted">${esc(c.desc)}</div>`:''}
     ${c.note?`<div><b>Nota:</b> ${esc(c.note)}</div>`:''}
     ${last?`<div class="muted">Ultima: ${esc(fmtDate(last.at))} · ${esc(OUT[last.outcome]?OUT[last.outcome].label:last.outcome)}</div>`:''}
+    ${c.profile&&c.profile.best?`<div class="muted">Preferisce essere chiamato: ${esc(c.profile.best)}</div>`:''}
+    ${settings.script?`<details data-keep="scriptOpen"${lsGet('scriptOpen')?' open':''}><summary>Script di chiamata</summary><div class="script">${esc(settings.script)}</div></details>`:''}
     <div class="phone">${esc(c.phone)}</div>
     <a class="callbtn" href="tel:${esc(c.phone)}" data-act="call" data-id="${c.id}">Chiama</a>
     <div class="row"><button class="btn grow" data-act="skip" data-id="${c.id}">Salta</button>
@@ -306,11 +362,13 @@ function callView(){
   return h + `${dialPad()}`;
 }
 function contactsView(){
+  const viewChips = `<div class="subtabs">${[['list','Elenco'],['pipe','Pipeline']].map(([id,l])=>`<button data-act="cView" data-id="${id}" aria-pressed="${cView===id}">${l}</button>`).join('')}</div>`;
+  if(cView==='pipe') return viewChips + pipelineView();
   const qq = query.trim().toLowerCase();
   const res = contacts.filter(c=>(!listFilter||c.list===listFilter) && (!statusFilter||c.status===statusFilter) &&
-    (!qq || (c.name+' '+c.company+' '+c.phone+' '+c.city).toLowerCase().includes(qq)));
+    (!qq || (c.name+' '+c.company+' '+c.phone+' '+c.city+' '+((c.profile&&c.profile.tags)||[]).join(' ')).toLowerCase().includes(qq)));
   const chips = [{id:'',label:'Tutti'},{id:'new',label:'Da chiamare'},...OUTCOMES];
-  return `<input type="search" id="q" placeholder="Cerca nome, azienda, telefono, città" value="${esc(query)}"><button class="btn" data-act="newNum">Chiama un altro numero</button>
+  return viewChips + `<input type="search" id="q" placeholder="Cerca nome, azienda, telefono, città, etichetta" value="${esc(query)}"><button class="btn" data-act="newNum">Chiama un altro numero</button>
     <div class="chips">${chips.map(s=>`<button class="chip" data-act="status" data-id="${s.id}" aria-pressed="${statusFilter===s.id}">${esc(s.label)}</button>`).join('')}</div>
     ${listChips()}<div class="muted">${res.length.toLocaleString('it-IT')} risultati</div>
     <div class="list">${res.slice(0,shown).map(itemRow).join('')}</div>
@@ -384,6 +442,7 @@ function statCalls(){
   return calls;
 }
 function statsView(){
+  if(statTab!=='sum') return statHead() + ({time:timeView,seg:segView,eff:effView})[statTab]();
   const calls = statCalls();
   const n = id => calls.filter(k=>k.outcome===id).length;
   const reached = calls.filter(k=>OUT[k.outcome]&&OUT[k.outcome].reached).length;
@@ -393,8 +452,8 @@ function statsView(){
   const rows = groupCalls(calls, groupBy);
   const cell = v => v ? v : '<span class="zero">·</span>';
   const gLabel = {day:'giorno',week:'settimana',month:'mese'}[groupBy];
-  return `<div class="chips wrap">${[['today','Oggi'],['week','Questa settimana'],['month','Questo mese'],['all','Sempre'],['custom','Da data a data']].map(([id,l])=>`<button class="chip" data-act="period" data-id="${id}" aria-pressed="${period===id}">${l}</button>`).join('')}</div>
-  ${period==='custom'?`<div class="row"><label class="grow">Dal<input type="date" id="sFrom" value="${esc(statFrom)}"></label><label class="grow">Al<input type="date" id="sTo" value="${esc(statTo)}"></label></div>`:''}
+  return `${statHead()}
+  <button class="btn small" data-act="summary">Riepilogo di oggi da copiare</button>
   <div class="tiles">
     <div class="tile"><b>${calls.length}</b><span>Chiamate fatte</span></div>
     <div class="tile"><b>${fmtLong(talk)}</b><span>Tempo al telefono</span></div>
@@ -403,6 +462,7 @@ function statsView(){
     <div class="tile"><b>${n('interested')}</b><span>Interessati</span></div>
     <div class="tile"><b>${n('customer')}</b><span>Clienti</span></div>
   </div>
+  ${compareCard()}
   <div class="card"><h3>Esiti nel periodo</h3>${OUTCOMES.map(o=>`<div class="bar"><span>${esc(o.label)}</span><i style="width:${n(o.id)/max*100}%"></i><em>${n(o.id)}</em></div>`).join('')}</div>
   <div class="card"><h3>Dettaglio per ${gLabel}</h3>
     <div class="chips wrap">${[['day','Giornaliero'],['week','Settimanale'],['month','Mensile']].map(([id,l])=>`<button class="chip" data-act="group" data-id="${id}" aria-pressed="${groupBy===id}">${l}</button>`).join('')}</div>
@@ -464,7 +524,10 @@ function dataView(){
   <div class="card"><h3>Impostazioni</h3>
     <label>Prefisso per i numeri senza prefisso internazionale<input type="text" id="setPrefix" value="${esc(settings.prefix)}"></label>
     <label>Tentativi massimi senza risposta prima di togliere dalla coda<input type="number" id="setMax" min="1" max="20" value="${settings.maxAttempts}"></label>
+    <label>Obiettivo di chiamate al giorno (0 per nasconderlo)<input type="number" id="setGoal" min="0" value="${settings.goal}"></label>
+    <label class="check"><input type="checkbox" id="setSmart"${settings.smart?' checked':''}> Coda intelligente: propone prima le categorie che rispondono di più (servono almeno 20 chiamate per categoria)</label>
     <button class="btn" data-act="saveSettings">Salva impostazioni</button></div>
+  ${extraDataCards()}
   <div class="card"><h3>Zona pericolosa</h3><button class="btn danger" data-act="wipe">Cancella tutti i contatti e le chiamate</button></div>`;
 }
 
@@ -475,24 +538,27 @@ function toast(msg){ clearTimeout(toastT); const old=$('.toast'); if(old) old.re
 
 function contactSheet(id){
   const c = byId(id); if(!c) return;
-  const blocked = OUT[c.status] && OUT[c.status].block;
+  const blocked = isBlocked(c);
   const wa = c.phone.replace(/\D/g,'');
-  sheet(`<div class="row">${pill(c)}${c.callbackAt?`<span class="muted">${esc(fmtDate(c.callbackAt))}</span>`:''}</div>
+  sheet(`<div class="row">${pill(c)}${c.callbackAt?`<span class="muted">${esc(fmtDate(c.callbackAt))}</span>`:''}${tagPills(c)}</div>
     <h2>${esc(c.name||c.company||'Senza nome')}</h2>
     <div class="muted">${esc([c.company&&c.name?c.company:'',c.city,c.email,c.list].filter(Boolean).join(' · '))}</div>
     ${c.info?`<div class="muted">${esc(c.info)}</div>`:''}
     ${c.desc?`<div class="muted">${esc(c.desc)}</div>`:''}
     <div class="phone">${esc(c.phone)}</div>
-    ${blocked?`<div class="banner">Contatto da non chiamare più.</div>`:`<a class="callbtn" href="tel:${esc(c.phone)}" data-act="call" data-id="${c.id}">Chiama</a>`}
+    ${blocked?`<div class="banner">${c.rpo&&c.rpo.listed?'Iscritto al Registro delle Opposizioni: da non chiamare.':'Contatto da non chiamare più.'}</div>`:`<a class="callbtn" href="tel:${esc(c.phone)}" data-act="call" data-id="${c.id}">Chiama</a>`}
     <div class="row"><button class="btn grow" data-act="outcome" data-id="${c.id}">Registra esito</button>
-      ${blocked?'':`<a class="btn grow" href="https://wa.me/${wa}" target="_blank" rel="noopener">WhatsApp</a>`}</div>
+      ${blocked?'':`<a class="btn grow" data-act="logWa" data-id="${c.id}" data-type="Messaggio libero" href="https://wa.me/${wa}" target="_blank" rel="noopener">WhatsApp</a>`}</div>
+    ${c.calls.length || c.status!=='new' ? `<div class="row">${c.calls.length?`<button class="btn grow" data-act="fixOutcome" data-id="${c.id}">Correggi ultimo esito</button>`:''}${c.status!=='new'?`<button class="btn grow" data-act="requeue" data-id="${c.id}">Rimetti tra i Da chiamare</button>`:''}</div>` : ''}
     ${c.callbackAt && ['callback','interested','appointment'].includes(c.status) ? gcalBtn(c) : ''}
-    ${['interested','appointment'].includes(c.status) ? waBtn(c) : ''}
+    ${isBlocked(c) ? '' : waBtn(c)}
     <label>Nota sul contatto<textarea id="cNote">${esc(c.note)}</textarea></label>
     <button class="btn" data-act="saveNote" data-id="${c.id}">Salva nota</button>
+    ${profileBlock(c)}
     <h3>Storico chiamate (${c.calls.length})</h3>
     ${c.calls.length ? c.calls.slice().reverse().map(k=>`<div class="hist"><b>${esc(fmtDate(k.at))} · ${esc(OUT[k.outcome]?OUT[k.outcome].label:k.outcome)}</b>
-      <span class="muted">Durata ${fmtDur(k.dur)}${k.note?' · '+esc(k.note):''}</span></div>`).join('') : `<div class="muted">Nessuna chiamata registrata.</div>`}
+      <span class="muted">Durata ${fmtDur(k.dur)}${k.note?' · '+esc(k.note):''}${[k.service,k.who,k.stage,k.script,k.objection,k.reason,k.interest?'interesse '+k.interest:'',k.material?'chiesto materiale':'',k.voicemail?'messaggio in segreteria':''].filter(Boolean).map(x=>' · '+esc(x)).join('')}${k.edited?' · corretto a mano'+(k.prev&&OUT[k.prev]?' (prima: '+esc(OUT[k.prev].label)+')':''):''}</span></div>`).join('') : `<div class="muted">Nessuna chiamata registrata.</div>`}
+    ${(c.acts||[]).length?`<h3>Messaggi WhatsApp aperti (${c.acts.length})</h3>${c.acts.slice().reverse().map(x=>`<div class="hist"><span class="muted">${esc(fmtDate(x.at))} · ${esc(x.type)}</span></div>`).join('')}`:''}
     <div class="row"><button class="btn grow" data-act="close">Chiudi</button><button class="btn danger" data-act="delContact" data-id="${c.id}">Elimina</button></div>`);
 }
 function newNumSheet(){
@@ -509,7 +575,7 @@ function addNum(mode, raw, name, company){
   if(!phone) return toast('Scrivi un numero valido');
   let c = contacts.find(x=>x.phone===phone);
   if(c && mode==='add'){ toast('Numero già in lista'); return contactSheet(c.id); }
-  if(c && OUT[c.status] && OUT[c.status].block){ toast('Contatto da non chiamare più'); return contactSheet(c.id); }
+  if(c && isBlocked(c)){ toast('Contatto da non chiamare più'); return contactSheet(c.id); }
   if(!c){
     c = {id:uid(), name, company, phone, city:'', email:'', info:'', list:'Aggiunti a mano',
       status:'new', attempts:0, lastCallAt:null, callbackAt:null, note:'', calls:[], createdAt:Date.now(), ord:0};
@@ -528,17 +594,16 @@ function gcalUrl(c){
     '&dates=' + f(c.callbackAt) + '/' + f(c.callbackAt + (appt?APPT_MINUTES:15)*60000) + '&details=' + encodeURIComponent(details) + (appt&&ZOOM_LINK ? '&location='+encodeURIComponent(ZOOM_LINK) : '');
 }
 const gcalBtn = c => `<a class="btn" href="${esc(gcalUrl(c))}" target="_blank" rel="noopener">Aggiungi a Google Calendar</a>`;
+const waTpl = c => (settings.tpl||{})[c.status] || '';
 function waMsg(c){
-  if(c.status==='appointment' && c.callbackAt){
-    const d = new Date(c.callbackAt);
-    return MSG_CONFERMA.replace('{giorno}', d.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'}))
-      .replace('{ora}', d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})).replace('{zoom}', ZOOM_LINK);
-  }
-  return MSG_PRENOTA.replace('{link}', SCHEDULER_LINK);
+  const d = c.callbackAt ? new Date(c.callbackAt) : null;
+  return waTpl(c).replace(/\{giorno\}/g, d?d.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'}):'')
+    .replace(/\{ora\}/g, d?d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'').replace(/\{zoom\}/g, ZOOM_LINK).replace(/\{link\}/g, SCHEDULER_LINK);
 }
 function waBtn(c, cls){
-  const label = c.status==='appointment' ? 'Invia conferma su WhatsApp' : 'Invia link per prenotare su WhatsApp';
-  return `<a class="btn ${cls||''}" href="https://wa.me/${c.phone.replace(/\D/g,'')}?text=${encodeURIComponent(waMsg(c))}" target="_blank" rel="noopener">${label}</a>`;
+  if(!waTpl(c)) return '';
+  const label = c.status==='appointment' ? 'Invia conferma su WhatsApp' : c.status==='interested' ? 'Invia link per prenotare su WhatsApp' : 'Invia messaggio su WhatsApp';
+  return `<a class="btn ${cls||''}" data-act="logWa" data-id="${c.id}" data-type="${esc(statusOf(c).label)}" href="https://wa.me/${c.phone.replace(/\D/g,'')}?text=${encodeURIComponent(waMsg(c))}" target="_blank" rel="noopener">${label}</a>`;
 }
 function calSheet(c){
   const appt = c.status==='appointment';
@@ -548,17 +613,23 @@ function calSheet(c){
     ${c.callbackAt?gcalBtn(c):''}
     <button class="btn" data-act="close">Continua con le chiamate</button>`);
 }
-let oSel=null;
-function outcomeSheet(id, sec){
+let oSel=null, oEdit=false;
+function outcomeSheet(id, sec, edit){
   const c = byId(id); if(!c) return; oSel=null;
+  const last = c.calls[c.calls.length-1];
+  oEdit = !!(edit && last);
+  if(oEdit) sec = last.dur;
   sec = Math.max(0,Math.round(sec||0));
-  sheet(`<h2>Com'è andata con ${esc(c.name||c.company||c.phone)}?</h2>
+  sheet(`<h2>${oEdit?'Correggi l\'ultimo esito di':'Com\'è andata con'} ${esc(c.name||c.company||c.phone)}${oEdit?'':'?'}</h2>
+    ${oEdit?`<div class="muted">Chiamata del ${esc(fmtDate(last.at))}, esito attuale: ${esc(OUT[last.outcome]?OUT[last.outcome].label:last.outcome)}. La correzione sostituisce l'esito: le statistiche non contano una chiamata in più.</div>`:''}
     <div class="dur"><span class="muted">Durata</span><input type="number" id="oMin" min="0" value="${Math.floor(sec/60)}" aria-label="Minuti"><b>:</b><input type="number" id="oSec" min="0" max="59" value="${sec%60}" aria-label="Secondi"><span class="muted">min : sec</span></div>
     <div class="outgrid">${OUTCOMES.map(o=>`<button class="out" data-act="pick" data-id="${o.id}" aria-pressed="false">${esc(o.label)}</button>`).join('')}</div>
     <div id="oDateBox" hidden><label><span id="oDateLbl">Quando</span><input type="datetime-local" id="oDate"></label>
       <div class="chips" style="margin-top:8px">${[['2h','Tra 2 ore'],['tom','Domani 10:00'],['3d','Tra 3 giorni'],['7d','Tra una settimana']].map(([k,l])=>`<button class="chip" data-act="quick" data-id="${k}">${l}</button>`).join('')}</div></div>
-    <label>Nota<textarea id="oNote" placeholder="Cosa vi siete detti"></textarea></label>
+    ${callDetails(oEdit?last:{service:lsGet('lastService'),script:lsGet('lastScript')})}
+    <label>Nota<textarea id="oNote" placeholder="Cosa vi siete detti">${esc(oEdit?last.note:'')}</textarea></label>
     <div class="row"><button class="btn grow" data-act="close">Annulla</button><button class="btn primary grow" data-act="saveOutcome" data-id="${c.id}">Salva</button></div>`);
+  if(oEdit && c.callbackAt) $('#oDate').value = toLocalInput(c.callbackAt);
 }
 function saveOutcome(id){
   const c = byId(id); if(!c) return;
@@ -568,15 +639,14 @@ function saveOutcome(id){
   if(o.date==='req' && !when) return toast('Indica data e ora');
   const dur = (parseInt($('#oMin').value)||0)*60 + (parseInt($('#oSec').value)||0);
   const note = $('#oNote').value.trim();
-  c.calls.push({at:Date.now(), dur, outcome:o.id, note});
-  c.status = o.id; c.lastCallAt = Date.now();
-  c.attempts = o.retry ? (c.attempts||0)+1 : 0;
-  c.callbackAt = o.date ? when : null;
-  if(note) c.note = note;
+  const wasEdit = oEdit && c.calls.length>0;
+  applyOutcome(c, o, {dur, note, when, edit:oEdit, now:Date.now()}, OUT);
+  const kk = c.calls[c.calls.length-1]; readCallDetails(kk);
+  if(o.date && when) kk.cb = when; else delete kk.cb;
   saveContact(c);
   if(pending && pending.id===id){ pending=null; lsSet('pendingCall',null); }
   closeSheet(); render();
-  if(o.id==='appointment' || o.id==='interested') calSheet(c); else toast('Salvato: '+o.label);
+  if(o.id==='appointment' || o.id==='interested') calSheet(c); else toast((wasEdit?'Esito corretto: ':'Salvato: ')+o.label);
 }
 
 /* ---------- importazione CSV ---------- */
@@ -670,7 +740,7 @@ async function restore(text){
   let d; try{ d=JSON.parse(text); }catch(e){ return toast('File di backup non valido'); }
   if(!d || !Array.isArray(d.contacts)) return toast('File di backup non valido');
   await idb('contacts','readwrite', s=>s.clear());
-  contacts = d.contacts; settings = {...DEFAULTS,...(d.settings||{})};
+  contacts = d.contacts; settings = {...DEFAULTS,...(d.settings||{})}; settings.tpl = {...DEFAULT_TPL, ...(settings.tpl||{})};
   await saveMany(contacts); await saveMeta(); render(); toast('Ripristinati '+contacts.length+' contatti');
 }
 function demo(){
@@ -679,6 +749,266 @@ function demo(){
     ['Antonio Cossu','Cossu Trasporti Snc','0783 22 334','Oristano'],['Elena Murgia','Farmacia Murgia','328 999 0011','Alghero']];
   const add = d.map(([name,company,p,city],i)=>({ord:i,id:uid(),name,company,phone:normPhone(p,settings.prefix),city,email:'',info:'',list:'Esempio',status:'new',attempts:0,lastCallAt:null,callbackAt:null,note:'',calls:[],createdAt:Date.now()}));
   contacts.push(...add); saveMany(add); render(); toast('Contatti di esempio caricati (numeri finti)');
+}
+
+/* ---------- campi aggiuntivi: tutti facoltativi, i contatti e le chiamate salvati prima restano validi ---------- */
+const selF = (id,label,opts,val) => `<label>${label}<select id="${id}"><option value="">Non indicato</option>${opts.map(o=>`<option${String(o)===String(val==null?'':val)?' selected':''}>${esc(o)}</option>`).join('')}</select></label>`;
+const CALL_FIELDS = [['service','kService'],['who','kWho'],['stage','kStage'],['script','kScript'],['objection','kObjection'],['interest','kInterest'],['reason','kReason']];
+const isBlocked = c => !!((OUT[c.status]&&OUT[c.status].block) || (c.rpo&&c.rpo.listed));
+const isReached = k => !!(OUT[k.outcome]&&OUT[k.outcome].reached);
+const pctS = (x,y) => y ? Math.round(x/y*100)+'%' : '0%';
+const one = v => v ? v.toFixed(1).replace('.',',') : 'n.d.';
+const oneZ = v => (v||0).toFixed(1).replace('.',',');
+const euro = v => Math.round(v||0).toLocaleString('it-IT')+' €';
+const todayStr = () => { const d=new Date(); return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); };
+const cname = c => c.name||c.company||c.phone;
+
+function callDetails(pre){
+  pre = pre||{};
+  return `<details data-keep="detOpen"${lsGet('detOpen')?' open':''}><summary>Dettagli della chiamata (facoltativi)</summary><div class="grid2">
+    ${selF('kService','Servizio proposto',SERVICES,pre.service)}${selF('kWho','Chi ha risposto',WHO,pre.who)}
+    ${selF('kStage','Fin dove sei arrivato',STAGES,pre.stage)}${selF('kScript','Script usato',SCRIPTS,pre.script)}
+    ${selF('kObjection','Obiezione principale',OBJECTIONS,pre.objection)}${selF('kInterest','Interesse da 1 a 5',[1,2,3,4,5],pre.interest)}
+    ${selF('kReason','Motivo del non interesse',REASONS,pre.reason)}</div>
+    <label class="check"><input type="checkbox" id="kMaterial"${pre.material?' checked':''}> Ha chiesto materiale</label>
+    <label class="check"><input type="checkbox" id="kVoicemail"${pre.voicemail?' checked':''}> Lasciato messaggio in segreteria</label></details>`;
+}
+function readCallDetails(k){
+  for(const [f,id] of CALL_FIELDS){ const v=$('#'+id).value; if(v) k[f] = f==='interest' ? +v : v; else delete k[f]; }
+  if($('#kMaterial').checked) k.material=true; else delete k.material;
+  if($('#kVoicemail').checked) k.voicemail=true; else delete k.voicemail;
+  lsSet('lastService', k.service||null); lsSet('lastScript', k.script||null);
+}
+function profileBlock(c){
+  const p=c.profile||{}, r=c.rpo||{}, a=c.appt||{}, d=c.deal||{};
+  return `<details data-keep="profOpen"${lsGet('profOpen')?' open':''}><summary>Profilo del contatto</summary><div class="grid2">
+    <label>Orario preferito<input type="text" id="pBest" value="${esc(p.best||'')}" placeholder="Es. dopo le 18"></label>
+    ${selF('pChannel','Canale preferito',CHANNELS,p.channel)}${selF('pInvests','Investe già con',INVESTS,p.invests)}
+    ${selF('pExp','Esperienza di trading',EXPERIENCE,p.exp)}${selF('pCapital','Capitale indicativo',CAPITAL,p.capital)}
+    ${selF('pDecider','Chi decide',DECIDERS,p.decider)}
+    <label>Fonte del contatto<input type="text" id="pSource" value="${esc(p.source||'')}"></label>
+    <label>Etichette, separate da virgola<input type="text" id="pTags" value="${esc((p.tags||[]).join(', '))}"></label>
+    <label>Ha autorizzato il ricontatto il<input type="date" id="pConsent" value="${esc(p.consent||'')}"></label>
+    <label>Verificato sul Registro Opposizioni il<input type="date" id="pRpoDate" value="${esc(r.date||'')}"></label></div>
+    <label class="check"><input type="checkbox" id="pRpoListed"${r.listed?' checked':''}> Risulta iscritto al Registro delle Opposizioni (blocca le chiamate)</label>
+    <label>Referenze ricevute<textarea id="pRef" placeholder="Nomi e numeri che ti ha segnalato">${esc(p.ref||'')}</textarea></label>
+    <button class="btn" data-act="saveProfile" data-id="${c.id}">Salva profilo</button></details>
+  <details data-keep="dealOpen"${lsGet('dealOpen')?' open':''}><summary>Appuntamento e contratto</summary><div class="grid2">
+    ${selF('aResult','Esito dell’appuntamento',APPT_RESULTS,a.result)}${selF('aNoClose','Motivo della mancata chiusura',NOCLOSE,a.noclose)}
+    <label>Valore del contratto in euro<input type="number" id="dValue" min="0" step="1" value="${d.value!=null?d.value:''}"></label>
+    <label>Data di chiusura<input type="date" id="dDate" value="${esc(d.date||'')}"></label></div>
+    <button class="btn" data-act="saveDeal" data-id="${c.id}">Salva appuntamento e contratto</button></details>`;
+}
+function saveProfile(id){
+  const c=byId(id); if(!c) return;
+  const p={}; const set=(k,v)=>{ if(v && (!Array.isArray(v)||v.length)) p[k]=v; };
+  set('best',$('#pBest').value.trim()); set('channel',$('#pChannel').value); set('invests',$('#pInvests').value);
+  set('exp',$('#pExp').value); set('capital',$('#pCapital').value); set('decider',$('#pDecider').value);
+  set('source',$('#pSource').value.trim()); set('tags',$('#pTags').value.split(',').map(s=>s.trim()).filter(Boolean));
+  set('consent',$('#pConsent').value); set('ref',$('#pRef').value.trim());
+  c.profile=p;
+  const rd=$('#pRpoDate').value, rl=$('#pRpoListed').checked;
+  if(rd||rl) c.rpo={date:rd||todayStr(), listed:rl}; else delete c.rpo;
+  saveContact(c); render(); contactSheet(id); toast('Profilo salvato');
+}
+function saveDeal(id){
+  const c=byId(id); if(!c) return;
+  const res=$('#aResult').value, nc=$('#aNoClose').value, v=$('#dValue').value, dd=$('#dDate').value;
+  if(res||nc) c.appt={result:res,noclose:nc}; else delete c.appt;
+  if(v!=='') c.deal={value:Math.max(0,+v||0), date:dd||todayStr()}; else delete c.deal;
+  saveContact(c); render(); contactSheet(id); toast('Salvato');
+}
+function tagPills(c){ return ((c.profile&&c.profile.tags)||[]).map(t=>`<span class="pill t-mute">${esc(t)}</span>`).join(''); }
+
+/* ---------- statistiche avanzate: leggono soltanto ---------- */
+function statPairs(a,b){
+  if(a==null){ const r=statRange(period,statFrom,statTo); a=r[0]; b=r[1]; }
+  const out=[];
+  for(const c of contacts){ const cs=c.calls; for(let i=0;i<cs.length;i++){ const k=cs[i]; if(k.at>=a && k.at<=b) out.push({k,c,i}); } }
+  return out;
+}
+function statHead(){
+  return `<div class="chips wrap">${[['today','Oggi'],['week','Questa settimana'],['month','Questo mese'],['all','Sempre'],['custom','Da data a data']].map(([id,l])=>`<button class="chip" data-act="period" data-id="${id}" aria-pressed="${period===id}">${l}</button>`).join('')}</div>
+  ${period==='custom'?`<div class="row"><label class="grow">Dal<input type="date" id="sFrom" value="${esc(statFrom)}"></label><label class="grow">Al<input type="date" id="sTo" value="${esc(statTo)}"></label></div>`:''}
+  <div class="subtabs">${[['sum','Riepilogo'],['time','Tempo'],['seg','Segmenti'],['eff','Efficacia']].map(([id,l])=>`<button data-act="statTab" data-id="${id}" aria-pressed="${statTab===id}">${l}</button>`).join('')}</div>`;
+}
+function compareCard(){
+  if(period==='all') return '';
+  const [a,b0] = statRange(period,statFrom,statTo); const b=Math.min(b0,Date.now()); const len=b-a; if(len<=0) return '';
+  const cur=statPairs(a,b), prev=statPairs(a-len,a-1);
+  const m = ps => [ps.length, ps.filter(p=>isReached(p.k)).length, ps.filter(p=>p.k.outcome==='appointment').length, ps.reduce((s,p)=>s+(p.k.dur||0),0)];
+  const A=m(cur), B=m(prev), names=['Chiamate','Contatti raggiunti','Appuntamenti','Tempo al telefono'];
+  const delta=(x,y)=> y ? (x>=y?'+':'')+Math.round((x-y)/y*100)+'%' : (x?'nuovo':'=');
+  return `<div class="card"><h3>Confronto con il periodo precedente</h3><div class="muted">Stessa durata, subito prima del periodo scelto.</div>
+    <div class="tblwrap"><table><thead><tr><th>Voce</th><th>Ora</th><th>Prima</th><th>Variazione</th></tr></thead><tbody>
+    ${names.map((n,i)=>`<tr><td>${n}</td><td><b>${i===3?fmtLong(A[i]):A[i]}</b></td><td>${i===3?fmtLong(B[i]):B[i]}</td><td>${delta(A[i],B[i])}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+const BAND_NAMES=['8-10','10-12','12-14','14-16','16-18','18-20','Altro orario'], WD_NAMES=['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+const bandOf = h => (h<8||h>=20) ? 6 : Math.floor((h-8)/2);
+function timeView(){
+  const ps=statPairs(); if(!ps.length) return `<div class="card"><div class="muted">Nessuna chiamata registrata in questo periodo.</div></div>`;
+  const mk=()=>({n:0,r:0,a:0});
+  const hb=BAND_NAMES.map(mk), wb=WD_NAMES.map(mk), grid=WD_NAMES.map(()=>BAND_NAMES.map(mk));
+  const durBy={};
+  for(const {k} of ps){
+    const d=new Date(k.at), h=bandOf(d.getHours()), w=(d.getDay()+6)%7;
+    for(const o of [hb[h],wb[w],grid[w][h]]){ o.n++; if(isReached(k)) o.r++; if(k.outcome==='appointment') o.a++; }
+    (durBy[k.outcome]=durBy[k.outcome]||{n:0,s:0}); durBy[k.outcome].n++; durBy[k.outcome].s+=k.dur||0;
+  }
+  const tbl=(first,names,arr)=>`<div class="tblwrap"><table><thead><tr><th>${first}</th><th>Chiamate</th><th>Risposte</th><th>Appuntamenti</th></tr></thead><tbody>
+    ${arr.map((o,i)=>o.n?`<tr><td>${names[i]}</td><td><b>${o.n}</b></td><td>${pctS(o.r,o.n)}</td><td>${o.a||'<span class="zero">·</span>'}</td></tr>`:'').join('')}</tbody></table></div>`;
+  // sessioni di lavoro: chiamate separate da meno di 30 minuti
+  const sorted=ps.map(p=>p.k).sort((x,y)=>x.at-y.at); let sess=0, span=0, s0=0, last=0;
+  sorted.forEach((k,i)=>{ if(i===0 || k.at-last>30*60000){ if(i) span+=last-s0; sess++; s0=k.at; } last=k.at+(k.dur||0)*1000; });
+  span+=last-s0;
+  const perHour = span>0 ? ps.length/(span/3600000) : 0;
+  // giorni tra tentativi e fino all'appuntamento
+  let gapS=0, gapN=0, apS=0, apN=0;
+  for(const {k,c,i} of ps){
+    if(i>0){ gapS+=k.at-c.calls[i-1].at; gapN++; }
+    if(k.outcome==='appointment' && !c.calls.slice(0,i).some(x=>x.outcome==='appointment')){ apS+=k.at-c.calls[0].at; apN++; }
+  }
+  const maxDur=Math.max(1,...OUTCOMES.map(o=>durBy[o.id]?durBy[o.id].s/durBy[o.id].n:0));
+  return `<div class="tiles">
+      <div class="tile"><b>${one(perHour)}</b><span>Chiamate all'ora, nelle sessioni di lavoro</span></div>
+      <div class="tile"><b>${sess}</b><span>Sessioni di lavoro (${fmtLong(span/1000/Math.max(1,sess))} in media)</span></div>
+      <div class="tile"><b>${gapN?oneZ(gapS/gapN/864e5):'n.d.'}</b><span>Giorni tra un tentativo e il successivo</span></div>
+      <div class="tile"><b>${apN?oneZ(apS/apN/864e5):'n.d.'}</b><span>Giorni dal primo contatto all'appuntamento</span></div></div>
+    <div class="card"><h3>Per fascia oraria</h3>${tbl('Fascia',BAND_NAMES,hb)}</div>
+    <div class="card"><h3>Per giorno della settimana</h3>${tbl('Giorno',WD_NAMES,wb)}</div>
+    <div class="card"><h3>Quando rispondono di più</h3><div class="muted">Percentuale di risposte per giorno e fascia oraria. Più scuro significa più risposte; il numero piccolo sono le chiamate fatte.</div>
+      <div class="tblwrap"><table class="heat"><thead><tr><th></th>${BAND_NAMES.slice(0,6).map(b=>`<th>${b}</th>`).join('')}</tr></thead><tbody>
+      ${grid.map((row,w)=>`<tr><td>${WD_NAMES[w]}</td>${row.slice(0,6).map(o=>o.n?`<td style="background:rgba(36,71,214,${(0.08+o.r/o.n*0.55).toFixed(2)})"><b>${pctS(o.r,o.n)}</b><small>${o.n}</small></td>`:`<td><span class="zero">·</span></td>`).join('')}</tr>`).join('')}</tbody></table></div></div>
+    <div class="card"><h3>Durata media per esito</h3>${OUTCOMES.map(o=>{const d=durBy[o.id]; const v=d?d.s/d.n:0; return `<div class="bar"><span>${esc(o.label)}</span><i style="width:${v/maxDur*100}%"></i><em>${d?fmtDur(v):'·'}</em></div>`;}).join('')}</div>`;
+}
+function segRows(ps,keyFn){
+  const map=new Map();
+  for(const p of ps){ const name=keyFn(p); if(name==null||name==='') continue;
+    let g=map.get(name); if(!g){ g={name:String(name),n:0,r:0,i:0,a:0,c:0}; map.set(name,g); }
+    g.n++; if(isReached(p.k)) g.r++; if(p.k.outcome==='interested') g.i++; if(p.k.outcome==='appointment') g.a++; if(p.k.outcome==='customer') g.c++; }
+  return [...map.values()].sort((x,y)=>y.n-x.n);
+}
+function segTable(title,ps,keyFn,open){
+  const rows=segRows(ps,keyFn); if(!rows.length) return '';
+  return `<details class="card"${open?' open':''}><summary><h3>${title}</h3></summary><div class="tblwrap"><table><thead><tr><th>${title}</th><th>Chiamate</th><th>Risposte</th><th>Interessati</th><th>Appuntamenti</th><th>Appuntamenti ogni 100 chiamate</th></tr></thead><tbody>
+    ${rows.slice(0,15).map(g=>`<tr><td>${esc(g.name)}</td><td><b>${g.n}</b></td><td>${pctS(g.r,g.n)}</td><td>${g.i||'<span class="zero">·</span>'}</td><td>${g.a||'<span class="zero">·</span>'}</td><td>${oneZ(g.a/g.n*100)}</td></tr>`).join('')}</tbody></table></div>
+    ${rows.length>15?`<div class="muted">Mostrate le prime 15 voci su ${rows.length}.</div>`:''}</details>`;
+}
+function segView(){
+  const ps=statPairs(); if(!ps.length) return `<div class="card"><div class="muted">Nessuna chiamata registrata in questo periodo.</div></div>`;
+  const prof = f => p => p.c.profile && p.c.profile[f];
+  const kinds=[['Categoria',p=>p.c.info],['Città',p=>p.c.city],['Lista',p=>p.c.list]];
+  const rank=[]; kinds.forEach(([t,fn])=>segRows(ps,fn).forEach(g=>{ if(g.n>=20) rank.push({t,name:g.name,v:g.a/g.n*100,n:g.n}); }));
+  rank.sort((x,y)=>y.v-x.v);
+  const ints=ps.filter(p=>p.k.interest); const avgInt=ints.length?ints.reduce((s,p)=>s+p.k.interest,0)/ints.length:0;
+  return `<div class="tiles">
+      <div class="tile"><b>${avgInt?one(avgInt):'n.d.'}</b><span>Interesse medio da 1 a 5 (${ints.length} chiamate valutate)</span></div>
+      <div class="tile"><b>${ps.filter(p=>p.k.material).length}</b><span>Richieste di materiale</span></div>
+      <div class="tile"><b>${ps.filter(p=>p.k.voicemail).length}</b><span>Messaggi lasciati in segreteria</span></div>
+      <div class="tile"><b>${contacts.reduce((s,c)=>s+((c.acts||[]).length),0)}</b><span>Messaggi WhatsApp aperti dall'app, in totale</span></div></div>
+    <div class="card"><h3>Classifica dei segmenti</h3><div class="muted">Appuntamenti ogni 100 chiamate, solo per i segmenti con almeno 20 chiamate.</div>
+      ${rank.length?rank.slice(0,10).map((r,i)=>`<div class="bar"><span>${i+1}. ${esc(r.name)} <small>(${r.t})</small></span><i style="width:${r.v/Math.max(0.01,rank[0].v)*100}%"></i><em>${oneZ(r.v)}</em></div>`).join(''):'<div class="muted">Servono almeno 20 chiamate in un segmento per entrare in classifica.</div>'}</div>
+    ${segTable('Categoria',ps,kinds[0][1],true)}${segTable('Città',ps,kinds[1][1],true)}${segTable('Lista',ps,kinds[2][1],true)}
+    ${segTable('Tipo di numero',ps,p=>/^\+393/.test(p.c.phone)?'Cellulare':'Fisso',true)}
+    ${segTable('Servizio proposto',ps,p=>p.k.service)}${segTable('Chi ha risposto',ps,p=>p.k.who)}${segTable('Script usato',ps,p=>p.k.script)}
+    ${segTable('Fase raggiunta',ps,p=>p.k.stage)}${segTable('Obiezione principale',ps,p=>p.k.objection)}${segTable('Motivo del non interesse',ps,p=>p.k.reason)}
+    ${segTable('Canale preferito',ps,prof('channel'))}${segTable('Investe già con',ps,prof('invests'))}${segTable('Esperienza di trading',ps,prof('exp'))}
+    ${segTable('Capitale indicativo',ps,prof('capital'))}${segTable('Chi decide',ps,prof('decider'))}${segTable('Fonte del contatto',ps,prof('source'))}`;
+}
+function effView(){
+  const [a,b]=statRange(period,statFrom,statTo), now=Date.now(), ps=statPairs(a,b);
+  // richiami: in orario, in ritardo, mai fatti
+  const cb={ok:0,late:0,never:0,plan:0};
+  for(const c of contacts){ c.calls.forEach((k,i)=>{
+    if(k.outcome!=='callback' || k.at<a || k.at>b) return;
+    const when = k.cb || (i===c.calls.length-1 ? c.callbackAt : null); if(!when) return;
+    const next=c.calls[i+1];
+    if(next) (next.at<=when+864e5 ? cb.ok++ : cb.late++); else (when<now ? cb.never++ : cb.plan++);
+  }); }
+  const idle=contacts.filter(c=>c.status==='interested' && (c.lastCallAt||0)<now-7*864e5).sort((x,y)=>(x.lastCallAt||0)-(y.lastCallAt||0));
+  // ritmo: contatti nuovi chiamati per giorno attivo negli ultimi 14 giorni
+  const from14=now-14*864e5; const days=new Set(); let firsts=0;
+  for(const c of contacts){ c.calls.forEach((k,i)=>{ if(k.at>=from14){ days.add(startOfDay(k.at).getTime()); if(i===0) firsts++; } }); }
+  const pace=days.size?firsts/days.size:0, left=contacts.filter(c=>c.status==='new'&&!isBlocked(c)).length;
+  // previsione
+  const all=statPairs(0,Infinity), apAll=all.filter(p=>p.k.outcome==='appointment').length, rate=all.length?apAll/all.length:0;
+  const need=rate?Math.ceil(statTarget/rate):0, avgDur=all.length?all.reduce((s,p)=>s+(p.k.dur||0),0)/all.length:0;
+  // ricavi
+  const inP = c => { const t=c.deal&&c.deal.date ? new Date(c.deal.date+'T12:00:00').getTime() : 0; return t>=a && t<=b; };
+  const deals=contacts.filter(c=>c.deal&&c.deal.value&&inP(c)), rev=deals.reduce((s,c)=>s+c.deal.value,0), talk=ps.reduce((s,p)=>s+(p.k.dur||0),0);
+  const ar=k=>contacts.filter(c=>c.appt&&c.appt.result===k).length, sv=ar('Svolto'), sa=ar('Saltato'), ri=ar('Rinviato');
+  const ncMap={}; contacts.forEach(c=>{ if(c.appt&&c.appt.noclose) ncMap[c.appt.noclose]=(ncMap[c.appt.noclose]||0)+1; });
+  const ncMax=Math.max(1,...Object.values(ncMap));
+  const refs=contacts.filter(c=>c.profile&&c.profile.ref).length, cons=contacts.filter(c=>c.profile&&c.profile.consent).length, rpoN=contacts.filter(c=>c.rpo&&c.rpo.date).length, rpoL=contacts.filter(c=>c.rpo&&c.rpo.listed).length;
+  return `<div class="card"><h3>Richiami promessi</h3><div class="muted">Un richiamo è in orario se la chiamata successiva arriva entro 24 ore dall'ora fissata.</div>
+      <div class="tiles"><div class="tile"><b>${cb.ok}</b><span>Fatti in orario</span></div><div class="tile"><b>${cb.late}</b><span>Fatti in ritardo</span></div>
+      <div class="tile"><b>${cb.never}</b><span>Scaduti e mai fatti</span></div><div class="tile"><b>${cb.plan}</b><span>Ancora in programma</span></div></div></div>
+    <div class="card"><h3>Interessati fermi da più di 7 giorni: ${idle.length}</h3>
+      ${idle.length?`<div class="list">${idle.slice(0,15).map(c=>`<button class="item" data-act="open" data-id="${c.id}"><span class="grow"><b>${esc(cname(c))}</b><small>Ultima chiamata ${esc(fmtDate(c.lastCallAt))}</small></span></button>`).join('')}</div>`:'<div class="muted">Nessuno: stai seguendo tutti gli interessati.</div>'}</div>
+    <div class="card"><h3>Quanto dura la lista</h3><div class="tiles">
+      <div class="tile"><b>${left.toLocaleString('it-IT')}</b><span>Contatti ancora da chiamare</span></div>
+      <div class="tile"><b>${pace?one(pace):'n.d.'}</b><span>Contatti nuovi al giorno (ultimi 14 giorni, nei giorni di lavoro)</span></div>
+      <div class="tile"><b>${pace?Math.ceil(left/pace):'n.d.'}</b><span>Giorni di lavoro per finire la lista a questo ritmo</span></div></div></div>
+    <div class="card"><h3>Previsione</h3>
+      <label>Quanti appuntamenti vuoi ottenere<input type="number" id="fTarget" min="1" value="${statTarget}"></label>
+      ${rate?`<div class="tiles"><div class="tile"><b>${need.toLocaleString('it-IT')}</b><span>Chiamate necessarie, al tuo ritmo storico (${one(rate*100)} appuntamenti ogni 100)</span></div>
+      <div class="tile"><b>${fmtLong(need*avgDur)}</b><span>Tempo al telefono stimato</span></div></div>`:'<div class="muted">La previsione compare dopo il primo appuntamento fissato.</div>'}</div>
+    <div class="card"><h3>Ricavi nel periodo</h3><div class="muted">Dai contratti con valore inserito nella scheda del contatto.</div><div class="tiles">
+      <div class="tile"><b>${euro(rev)}</b><span>Contratti chiusi: ${deals.length}</span></div>
+      <div class="tile"><b>${ps.length?euro(rev/ps.length):'n.d.'}</b><span>Ricavo per chiamata</span></div>
+      <div class="tile"><b>${talk?euro(rev/(talk/3600)):'n.d.'}</b><span>Ricavo per ora di telefono</span></div></div></div>
+    <div class="card"><h3>Appuntamenti, tutto lo storico</h3><div class="tiles">
+      <div class="tile"><b>${sv+sa?pctS(sv,sv+sa):'n.d.'}</b><span>Tasso di presenza (${sv} svolti, ${sa} saltati)</span></div>
+      <div class="tile"><b>${ri}</b><span>Rinviati</span></div></div>
+      ${Object.keys(ncMap).length?`<h3>Motivi della mancata chiusura</h3>${Object.entries(ncMap).sort((x,y)=>y[1]-x[1]).map(([n,v])=>`<div class="bar"><span>${esc(n)}</span><i style="width:${v/ncMax*100}%"></i><em>${v}</em></div>`).join('')}`:''}</div>
+    <div class="card"><h3>Contatti, tutto lo storico</h3><div class="tiles">
+      <div class="tile"><b>${refs}</b><span>Contatti che ti hanno dato referenze</span></div>
+      <div class="tile"><b>${cons}</b><span>Hanno autorizzato il ricontatto</span></div>
+      <div class="tile"><b>${rpoN.toLocaleString('it-IT')}</b><span>Verificati sul Registro Opposizioni (su ${contacts.length.toLocaleString('it-IT')})</span></div>
+      <div class="tile"><b>${rpoL}</b><span>Iscritti al Registro, bloccati</span></div></div></div>`;
+}
+
+/* ---------- riepilogo di giornata e pipeline ---------- */
+function summaryText(){
+  const a=startOfDay(Date.now()).getTime(), ps=statPairs(a,Infinity), now=Date.now();
+  const L=['Riepilogo del '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'}),'',
+    'Chiamate: '+ps.length, 'Tempo al telefono: '+fmtLong(ps.reduce((s,p)=>s+(p.k.dur||0),0)), 'Contatti raggiunti: '+ps.filter(p=>isReached(p.k)).length,'','Esiti:'];
+  OUTCOMES.forEach(o=>{ const n=ps.filter(p=>p.k.outcome===o.id).length; if(n) L.push('- '+o.label+': '+n); });
+  const ap=ps.filter(p=>p.k.outcome==='appointment');
+  if(ap.length){ L.push('','Appuntamenti fissati oggi:'); ap.forEach(p=>L.push('- '+cname(p.c)+(p.c.callbackAt?' il '+fmtDate(p.c.callbackAt):''))); }
+  const t0=a+864e5, t1=t0+864e5, tom=agenda().filter(c=>c.callbackAt>=t0 && c.callbackAt<t1), late=agenda().filter(c=>c.callbackAt<now && c.status!=='appointment');
+  L.push('','Per domani: '+tom.length+' tra richiami e appuntamenti'); tom.slice(0,15).forEach(c=>L.push('- '+new Date(c.callbackAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+' '+cname(c)+' ('+statusOf(c).label+')'));
+  if(late.length) L.push('','Richiami scaduti da recuperare: '+late.length);
+  return L.join('\n');
+}
+function summarySheet(){
+  sheet(`<h2>Riepilogo di oggi</h2><textarea id="sumText" readonly style="min-height:300px">${esc(summaryText())}</textarea>
+    <div class="row"><button class="btn grow" data-act="close">Chiudi</button><button class="btn primary grow" data-act="copySum">Copia il testo</button></div>`);
+}
+function pipelineView(){
+  const cols=['callback','interested','appointment','customer'];
+  return `<div class="muted">Da chiamare: <b>${contacts.filter(c=>c.status==='new').length.toLocaleString('it-IT')}</b>. Tocca un contatto per aprire la scheda e cambiarne lo stato.</div>
+    <div class="pipe">${cols.map(id=>{ const list=contacts.filter(c=>c.status===id).sort((x,y)=>(x.callbackAt||x.lastCallAt||0)-(y.callbackAt||y.lastCallAt||0));
+      return `<div class="pcol"><h3>${esc(OUT[id].label)} <span class="pill t-${OUT[id].tone}">${list.length}</span></h3>
+        ${list.slice(0,40).map(c=>`<button class="item" data-act="open" data-id="${c.id}"><span class="grow"><b>${esc(cname(c))}</b><small>${esc(c.callbackAt?fmtDate(c.callbackAt):'Ultima: '+fmtDate(c.lastCallAt))}${c.deal&&c.deal.value?' · '+euro(c.deal.value):''}</small></span></button>`).join('')||'<div class="muted">Nessuno</div>'}
+        ${list.length>40?`<div class="muted">Altri ${list.length-40}: usa i filtri dell'elenco.</div>`:''}</div>`; }).join('')}</div>`;
+}
+function smartOrder(fresh){
+  const m=new Map(); let N=0,R=0;
+  for(const c of contacts) for(const k of c.calls){ const key=c.info||''; let g=m.get(key); if(!g){g={n:0,r:0}; m.set(key,g);} g.n++; N++; if(isReached(k)){g.r++; R++;} }
+  const base=N?R/N:0, score=c=>{ const g=m.get(c.info||''); return g&&g.n>=20 ? g.r/g.n : base; };
+  return fresh.map((c,i)=>[c,score(c),i]).sort((x,y)=>(y[1]-x[1])||(x[2]-y[2])).map(x=>x[0]);
+}
+function extraDataCards(){
+  const t=settings.tpl||{};
+  return `<div class="card"><h3>Script di chiamata</h3><p class="muted">Compare nella scheda Chiama, da aprire durante la telefonata. Scrivi anche le risposte alle obiezioni.</p>
+      <textarea id="setScript" style="min-height:140px">${esc(settings.script||'')}</textarea><button class="btn" data-act="saveScript">Salva script</button></div>
+    <div class="card"><h3>Messaggi WhatsApp</h3><p class="muted">Un testo per ogni esito. Puoi usare {giorno} {ora} {zoom} {link}: l'app li sostituisce. Lascia vuoto per non proporre il messaggio.</p>
+      ${[['appointment','Appuntamento fissato'],['interested','Interessato'],['callback','Richiamare'],['no_answer','Non risponde']].map(([id,l])=>`<label>${l}<textarea id="tpl_${id}">${esc(t[id]||'')}</textarea></label>`).join('')}
+      <button class="btn" data-act="saveTpl">Salva messaggi</button></div>
+    <div class="card"><h3>Registro delle Opposizioni</h3><p class="muted">Dopo aver verificato una lista sul Registro, segna qui la data. L'app non fa la verifica: registra solo che l'hai fatta. I numeri iscritti vanno segnati nella scheda del contatto e vengono bloccati.</p>
+      <label>Lista<select id="rpoList">${lists().map(l=>`<option>${esc(l)}</option>`).join('')}</select></label>
+      <button class="btn" data-act="rpoBulk">Segna la lista come verificata oggi</button></div>`;
 }
 
 /* ---------- eventi ---------- */
@@ -710,6 +1040,22 @@ document.addEventListener('click', e=>{
       setTimeout(()=>{ closeSheet(); tab='call'; render(); },400); break;
     case 'cancelPending': pending=null; lsSet('pendingCall',null); render(); break;
     case 'outcome': outcomeSheet(id, pending&&pending.id===id ? (Date.now()-pending.t0)/1000 : 0); break;
+    case 'fixOutcome': outcomeSheet(id, 0, true); break;
+    case 'statTab': statTab=id; render(); break;
+    case 'cView': cView=id; render(); break;
+    case 'saveProfile': saveProfile(id); break;
+    case 'saveDeal': saveDeal(id); break;
+    case 'logWa': { const c=byId(id); if(c){ (c.acts=c.acts||[]).push({at:Date.now(), type:el.dataset.type||'WhatsApp'}); saveContact(c); } break; }
+    case 'summary': summarySheet(); break;
+    case 'copySum': { const t=$('#sumText'); try{ navigator.clipboard.writeText(t.value).then(()=>toast('Testo copiato'),()=>{ t.select(); toast('Seleziona e copia il testo'); }); }catch(err){ t.select(); toast('Seleziona e copia il testo'); } break; }
+    case 'saveScript': settings.script=$('#setScript').value.trim(); saveMeta(); toast('Script salvato'); break;
+    case 'saveTpl': ['appointment','interested','callback','no_answer'].forEach(k=>{ settings.tpl[k]=$('#tpl_'+k).value.trim(); }); saveMeta(); toast('Messaggi salvati'); break;
+    case 'rpoBulk': {
+      const l=$('#rpoList') && $('#rpoList').value; if(!l) break;
+      if(el.dataset.armed){ const d=todayStr(), ch=contacts.filter(c=>c.list===l); ch.forEach(c=>{ c.rpo={date:d, listed:!!(c.rpo&&c.rpo.listed)}; }); saveMany(ch); render(); toast(ch.length+' contatti segnati come verificati'); }
+      else { el.dataset.armed='1'; el.textContent='Tocca di nuovo per confermare'; }
+      break; }
+    case 'requeue': { const c=byId(id); c.status='new'; c.attempts=0; c.callbackAt=null; saveContact(c); render(); contactSheet(id); toast('Rimesso tra i Da chiamare'); break; }
     case 'pick': {
       oSel=id; document.querySelectorAll('.out').forEach(b=>b.setAttribute('aria-pressed', b.dataset.id===id));
       const o=OUT[id]; $('#oDateBox').hidden=!o.date;
@@ -738,7 +1084,8 @@ document.addEventListener('click', e=>{
     case 'restore': $('#fileJson').click(); break;
     case 'saveSettings':
       settings.prefix = ($('#setPrefix').value.trim()||'+39'); if(settings.prefix[0]!=='+') settings.prefix='+'+settings.prefix;
-      settings.maxAttempts = Math.max(1, parseInt($('#setMax').value)||4); saveMeta(); render(); toast('Impostazioni salvate'); break;
+      settings.maxAttempts = Math.max(1, parseInt($('#setMax').value)||4);
+      settings.goal = Math.max(0, parseInt($('#setGoal').value)||0); settings.smart = $('#setSmart').checked; saveMeta(); render(); toast('Impostazioni salvate'); break;
     case 'wipe':
       if(Date.now()-wipeArmed<5000){ contacts=[]; skipped.clear(); pending=null; lsSet('pendingCall',null); idb('contacts','readwrite',s=>s.clear()); render(); toast('Tutto cancellato'); }
       else { wipeArmed=Date.now(); el.textContent='Tocca di nuovo entro 5 secondi per confermare'; }
@@ -751,7 +1098,9 @@ document.addEventListener('input', e=>{
 document.addEventListener('change', e=>{
   if(e.target.id==='sFrom'){ statFrom=e.target.value; render(); }
   if(e.target.id==='sTo'){ statTo=e.target.value; render(); }
+  if(e.target.id==='fTarget'){ statTarget=Math.max(1, parseInt(e.target.value)||1); render(); }
 });
+document.addEventListener('toggle', e=>{ const k=e.target.dataset && e.target.dataset.keep; if(k) lsSet(k, e.target.open||null); }, true);
 $('#fileCsv').addEventListener('change', async e=>{
   const f=e.target.files[0]; e.target.value=''; if(!f) return;
   const rows = parseCSV(await readText(f));
@@ -773,6 +1122,7 @@ document.addEventListener('visibilitychange', ()=>{
   contacts = (await idb('contacts','readonly', s=>s.getAll())) || [];
   contacts.sort((a,b)=>((a.createdAt||0)-(b.createdAt||0)) || ((a.ord||0)-(b.ord||0)));
   settings = {...DEFAULTS, ...((await idb('meta','readonly', s=>s.get('settings')))||{})};
+  settings.tpl = {...DEFAULT_TPL, ...(settings.tpl||{})};
   meta = (await idb('meta','readonly', s=>s.get('meta'))) || {};
   if(pending && !byId(pending.id)){ pending=null; lsSet('pendingCall',null); }
   render();
