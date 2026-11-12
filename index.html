@@ -141,7 +141,7 @@ const OUTCOMES = [
   {id:'wrong',          label:'Numero errato',        tone:'crit'},
   {id:'dnc',            label:'Non chiamare più',     tone:'crit', reached:true, block:true},
 ];
-const APP_VERSION = '1.8 del 12/11/2026';
+const APP_VERSION = '1.9 del 12/11/2026';
 const DEFAULTS = { prefix:'+39', maxAttempts:4 };
 const APPT_MINUTES = 30;   // durata di un appuntamento in Google Calendar (i richiami durano 15 minuti)   // prefisso per numeri senza +, tentativi massimi a vuoto
 // Link Zoom fisso per gli appuntamenti e link Zoom Scheduler per far scegliere l'orario al contatto
@@ -352,6 +352,31 @@ function groupCalls(calls, by){
   }
   return [...map.values()].sort((a,b)=>b.key-a.key);
 }
+// Analisi per tentativo: cosa succede alla 1ª, 2ª, 3ª... chiamata allo stesso contatto. Legge soltanto, non modifica nulla.
+function attemptStats(list, a, b, OUTMAP){
+  const rows = [1,2,3,4,5].map(t=>({t,n:0,reached:0,by:{}}));
+  const f = {called:0, calls:0, reached:0, interested:0, appointment:0, customer:0, multi:0};
+  const toAppt=[], toCust=[];
+  for(const c of list){
+    const calls = (c.calls||[]).slice().sort((x,y)=>x.at-y.at);
+    let any=0, fl={};
+    calls.forEach((k,i)=>{
+      if(k.at<a || k.at>b) return;
+      any++; f.calls++;
+      const r = rows[Math.min(i+1,5)-1]; r.n++; r.by[k.outcome]=(r.by[k.outcome]||0)+1;
+      const o = OUTMAP[k.outcome];
+      if(o && o.reached){ r.reached++; fl.reached=1; }
+      if(k.outcome==='interested') fl.interested=1;
+      if(k.outcome==='appointment'){ if(!fl.appointment) toAppt.push(i+1); fl.appointment=1; }
+      if(k.outcome==='customer'){ if(!fl.customer) toCust.push(i+1); fl.customer=1; }
+    });
+    if(!any) continue;
+    f.called++; if(any>1) f.multi++;
+    for(const k of ['reached','interested','appointment','customer']) if(fl[k]) f[k]++;
+  }
+  const avg = arr => arr.length ? arr.reduce((s,v)=>s+v,0)/arr.length : 0;
+  return {rows, f, avgAppt:avg(toAppt), avgCust:avg(toCust)};
+}
 /*STATS-END*/
 function statCalls(){
   const [a,b] = statRange(period, statFrom, statTo); const calls=[];
@@ -387,7 +412,33 @@ function statsView(){
       ${rows.length>statRows?`<button class="btn small" data-act="moreStats">Mostra periodi precedenti</button>`:''}
       <button class="btn small" data-act="expStats">Esporta questa tabella (CSV)</button>` : `<div class="muted">Nessuna chiamata registrata in questo periodo.</div>`}
   </div>
+  ${attemptCard()}
   <div class="card"><h3>Stato della lista, tutti i contatti</h3>${[{id:'new',label:'Da chiamare'},...OUTCOMES].map(o=>{const k=contacts.filter(c=>c.status===o.id).length;return `<div class="bar"><span>${esc(o.label)}</span><i style="width:${k/Math.max(1,contacts.length)*100}%"></i><em>${k}</em></div>`;}).join('')}</div>`;
+}
+function attemptCard(){
+  const [a,b] = statRange(period, statFrom, statTo);
+  const s = attemptStats(contacts, a, b, OUT), f = s.f;
+  if(!f.called) return '';
+  const pct = (x,y)=> y ? Math.round(x/y*100)+'%' : '0%';
+  const one = v => v ? v.toFixed(1).replace('.',',') : 'n.d.';
+  const cell = v => v ? v : '<span class="zero">·</span>';
+  const steps = [['Contatti chiamati',f.called],['Raggiunti almeno una volta',f.reached],['Interessati',f.interested],['Con appuntamento',f.appointment],['Diventati clienti',f.customer]];
+  const names = ['1ª chiamata','2ª chiamata','3ª chiamata','4ª chiamata','5ª o successive'];
+  return `<div class="card"><h3>Cosa succede contatto per contatto</h3>
+    <div class="muted">Qui si contano le persone, non le telefonate: un contatto chiamato tre volte vale uno.</div>
+    <div class="tiles">
+      <div class="tile"><b>${f.called}</b><span>Contatti chiamati</span></div>
+      <div class="tile"><b>${one(f.calls/f.called)}</b><span>Chiamate per contatto, in media</span></div>
+      <div class="tile"><b>${f.multi}</b><span>Contatti chiamati più di una volta (${pct(f.multi,f.called)})</span></div>
+      <div class="tile"><b>${one(s.avgAppt)}</b><span>Chiamate per arrivare a un appuntamento, in media</span></div>
+    </div>
+    ${steps.map(([l,v])=>`<div class="bar"><span>${l}</span><i style="width:${v/f.called*100}%"></i><em>${v}</em></div>`).join('')}
+    <div class="muted">Su 100 contatti chiamati: ${pct(f.reached,f.called)} raggiunti, ${pct(f.interested,f.called)} interessati, ${pct(f.appointment,f.called)} con appuntamento, ${pct(f.customer,f.called)} clienti.${s.avgCust?` Per fare un cliente servono in media ${one(s.avgCust)} chiamate.`:''}</div>
+    <h3>Esito per numero di tentativo</h3>
+    <div class="muted">Cosa succede alla prima chiamata a un contatto, alla seconda, alla terza e così via.</div>
+    <div class="tblwrap"><table><thead><tr><th>Tentativo</th><th>Chiamate</th><th>Risposte</th>${OUTCOMES.map(o=>`<th>${esc(o.label)}</th>`).join('')}</tr></thead>
+      <tbody>${s.rows.filter(r=>r.n).map(r=>`<tr><td>${names[r.t-1]}</td><td><b>${r.n}</b></td><td>${pct(r.reached,r.n)}</td>${OUTCOMES.map(o=>`<td>${cell(r.by[o.id])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+  </div>`;
 }
 function expStats(){
   const calls = statCalls(), rows = groupCalls(calls, groupBy);
